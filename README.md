@@ -1,73 +1,67 @@
 # RelayCart incident response demo
 
-RelayCart is a local, synthetic SaaS operations demo. It illustrates a healthy checkout, a successful deployment operation, an independent application health failure on v1.8.2, failed checkout evidence, manual rollback, and order readback after recovery. Deployment completion, application health, and business transaction success are distinct facts. It does not connect to real stores, customers, payment providers, or production systems. Incidents are not detected automatically and no customer messages are sent.
+RelayCart is a local, synthetic SaaS operations demo. Phase 1 provides the checkout service and independent deployment, health, and business-transaction evidence. Phase 2 adds n8n incident automation backed by PostgreSQL and an advisory NVIDIA NIM investigation. Customer operations through GoHighLevel are outside this phase.
 
-Dashboard evidence: [healthy](docs/evidence/healthy.png) · [degraded](docs/evidence/degraded.png) · [recovered](docs/evidence/recovered.png).
+The release operation, application health, and business transaction are separate facts:
 
-## Start
+```text
+deployment.completed ≠ health.failed / healthy ≠ checkout.failed / succeeded
+```
+
+No real store, customer, payment provider, or production system is connected. Demo data is synthetic.
+
+## Start RelayCart
 
 Requirements: Docker Engine and the Docker Compose plugin.
 
 ```sh
 cp .env.example .env
 docker compose up --build -d
-docker compose ps
 ```
 
-The API and UI are served together at <http://127.0.0.1:8001>. The API container listens on port 8000; host port 8001 is used because localhost:8000 is already occupied. PostgreSQL is only reachable by other Compose services and is not published on the host. The demo uses local-only credentials from `.env.example`; do not reuse them elsewhere.
+The dashboard/API is at <http://127.0.0.1:8001>. The API listens on container port 8000. PostgreSQL is private to Docker networks and has no host-published port. `.env.example` contains local demo-only credentials; do not reuse them.
 
-## Demo: healthy → deploy → detect → rollback
+## Connect the existing n8n instance
 
-1. Open the dashboard at <http://127.0.0.1:8001>. Run the checkout canary and confirm the order can be read back.
-2. Deploy v1.8.2 from the dashboard. The deployment operation completes. Then confirm `/health` independently reports the unhealthy application state, `docker compose ps` shows the API as unhealthy, a new checkout fails, and `/logs` contains separate `deployment.completed`, `health.failed`, and `checkout.failed` events.
-3. Roll back manually from the dashboard. Confirm the API returns to healthy, run another checkout, and verify its order readback.
-4. Select **Reset demo state** in the dashboard (or call `POST /demo/reset`) to restore the repeatable baseline.
+Phase 2 uses the existing local n8n instance. To attach it to the project network and verify its in-network access:
 
-The demo changes synthetic application state only. No real incident actions or customer messages are performed.
+```sh
+./scripts/connect-n8n
+```
 
-## Test and verify
+The shared Docker network is `relaycart-n8n`; RelayCart is addressed there as `http://relaycart-api:8000` and `relaycart-postgres:5432`. The helper starts only this project's API and database services and does not recreate n8n. See [Phase 2 architecture](docs/phase-2-architecture.md) for schema setup and the workflow status.
 
-Run the project's documented verification script:
+## Phase 1 demo
+
+1. Open the dashboard. Run a checkout and confirm its order can be read back.
+2. Deploy `v1.8.2`. The deployment operation completes. A subsequent health probe independently reports the application unhealthy, and a checkout independently fails. `/logs` exposes `deployment.completed`, `health.failed`, and `checkout.failed` as distinct events.
+3. Roll back from the dashboard and verify health and checkout again.
+4. Use **Reset demo state** to restore healthy `v1.8.1`.
+
+## Phase 2 status
+
+Phase 2 runs in the existing local n8n instance. Its four workflows ingest and correlate signals, gather bounded evidence, request NVIDIA NIM advice, gate a version-bound rollback on explicit approval, and verify actual checkout recovery. The live happy path, stale approval, and verification-failure paths have been exercised; see [the evidence and limitations](docs/phase-2-verification.md).
+
+The processing path is RelayCart operational events → n8n validation/correlation/evidence gathering → NVIDIA NIM advisory assessment → explicit human approval → version-bound rollback → health, checkout, and order-readback verification. n8n owns the incident process; model advice does not authorize changes. The local approval page is at <http://127.0.0.1:5678/webhook/phase2/approval/pending>. Follow the [Phase 2 demo](docs/phase-2-demo.md) and [AI investigation contract](docs/ai-investigation.md). Workflow exports require each reviewer to bind their own local Postgres/NIM credentials; no credential values are in this repository.
+
+## Verification
+
+Phase 1 checks:
 
 ```sh
 ./scripts/verify
 ```
 
-It runs the black-box test suite inside the API container. To invoke pytest directly:
+Phase 2 checks (requires the local Compose services and existing n8n instance):
 
 ```sh
-docker compose exec -T api pytest -q
+./scripts/verify-phase2
 ```
 
-Check the container health and API response:
+The Phase 2 verification report lists which live workflow scenarios have been exercised and any remaining limitations.
 
-```sh
-docker compose ps
-curl -fsS http://127.0.0.1:8001/health
-```
+## Boundaries
 
-Docker Compose health checks cover PostgreSQL readiness and API health, including the application's reported healthy state. The API waits for PostgreSQL's healthy state before starting. The API container becomes unhealthy during the simulated v1.8.2 failure and healthy again after rollback. The deploy endpoint reports only whether the release operation completed; it does not certify application health. Repeated health polls create at most one `health.failed` event for a deployment.
+This is a single-machine synthetic demo, not a production incident-management service. It has no production IAM, real customer records, customer messaging, GHL objects/workflows, payment integration, or deployment target. The local approval page is not authenticated for production use. NVIDIA NIM is an advisory investigator only. Log contents are untrusted evidence. A successful rollback response alone does not constitute recovery.
 
-## Stop and reset
-
-Stop containers while keeping demo data:
-
-```sh
-docker compose down
-```
-
-For a clean database reset, stop the stack and delete the local database volume:
-
-```sh
-docker compose down -v
-```
-
-The volume removal is destructive to this demo's stored data. Use it only when you want a clean local reset.
-
-## Boundaries and roadmap
-
-This Phase 1 build is a single-machine demo. It is not production-ready and has no real customer data, authentication, external notifications, payment integrations, or production incident automation. Keep `.env` local; it is ignored by Git. n8n and GoHighLevel are outside this demo and are not modified or required.
-
-Roadmap: Phase 2 adds n8n technical incident automation; Phase 3 adds GoHighLevel (GHL) customer operations. Neither phase is implemented here: n8n and GHL are not connected, and no automation or customer operations run from this demo.
-
-See [architecture](docs/architecture.md), [business scenario](docs/business-scenario.md), and [Phase 1 verification](docs/phase-1-verification.md).
+See [Phase 1 architecture](docs/architecture.md), [business scenario](docs/business-scenario.md), [Phase 1 verification](docs/phase-1-verification.md), and the Phase 2 documents linked above.

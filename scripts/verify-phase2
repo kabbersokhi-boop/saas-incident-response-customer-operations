@@ -1,0 +1,38 @@
+#!/usr/bin/env sh
+set -eu
+
+repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$repo_dir"
+
+printf '%s\n' '== RelayCart ↔ n8n network =='
+./scripts/connect-n8n
+
+printf '%s\n' '== Build API image with Phase 2 verification tests =='
+docker compose up -d --build api
+
+printf '%s\n' '== Apply idempotent incident schema =='
+docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U relaycart -d relaycart < n8n/schema.sql
+
+printf '%s\n' '== Product contract tests =='
+docker compose exec -T api pytest -q tests/test_phase1.py tests/test_phase2_product.py
+
+printf '%s\n' '== AI validator/evaluation unit tests =='
+node --test --test-reporter=spec n8n/evaluation/test_eval.mjs
+
+printf '%s\n' '== Installed n8n workflow inventory =='
+./scripts/n8n-workflow-api list
+
+if [ ! -x ./scripts/test-phase2-n8n ]; then
+  printf '%s\n' 'PENDING: scripts/test-phase2-n8n is not present; live ingestion, correlation, AI failure, approval, stale-approval, remediation, and recovery scenarios have not been verified.' >&2
+  exit 2
+fi
+
+printf '%s\n' '== Live n8n integration scenarios =='
+./scripts/test-phase2-n8n
+
+if [ "${RUN_NIM_EVAL:-0}" = 1 ]; then
+  printf '%s\n' '== Live NVIDIA NIM fixture evaluation =='
+  ./n8n/evaluation/run_in_n8n.sh --limit "${NIM_EVAL_LIMIT:-16}" --timeout "${NIM_EVAL_TIMEOUT:-45}" --concurrency "${NIM_EVAL_CONCURRENCY:-4}"
+else
+  printf '%s\n' 'Live batch evaluation not requested. Set RUN_NIM_EVAL=1 to send the bounded fixture batch.'
+fi

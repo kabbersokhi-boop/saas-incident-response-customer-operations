@@ -1,0 +1,27 @@
+#!/usr/bin/env sh
+set -eu
+
+repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$repo_dir"
+
+if ! docker inspect "${N8N_CONTAINER:-n8n}" >/dev/null 2>&1; then
+  printf '%s\n' 'n8n container not found; run ./scripts/connect-n8n first.' >&2
+  exit 1
+fi
+
+docker compose up -d --build api
+docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U relaycart -d relaycart < n8n/schema.sql
+if test_output=$(docker compose exec -T api pytest -q -rs tests/test_phase2_n8n.py); then
+  test_status=0
+else
+  test_status=$?
+fi
+printf '%s\n' "$test_output"
+[ "$test_status" -eq 0 ] || exit "$test_status"
+
+case "$test_output" in
+  *" skipped"*)
+    printf '%s\n' 'PENDING: approval/remediation integration cases are skipped until their live contract is verified.' >&2
+    exit 2
+    ;;
+esac
