@@ -14,6 +14,7 @@
     operation: $('#operation-message'),
     checkout: $('#checkout-result'),
     toast: $('#toast-region'),
+    incident: $('#live-incident'),
   };
   let state = null;
   let pending = false;
@@ -328,9 +329,85 @@
     }
   }
 
+  function renderActiveIncident(payload) {
+    $('#live-incident-state').textContent = payload && payload.available ? 'READ ONLY' : 'N8N SCHEMA NOT INSTALLED';
+    if (!payload || !payload.available) return setEmpty(els.incident, 'Incident automation is not connected yet.');
+    const incident = payload.incident;
+    if (!incident) return setEmpty(els.incident, 'No technical incident has been recorded.');
+    $('#live-incident-state').textContent = incident.is_active ? 'ACTIVE · READ ONLY' : 'LATEST · READ ONLY';
+
+    els.incident.replaceChildren();
+    const heading = node('div', 'live-incident-heading');
+    const identity = node('div');
+    identity.append(
+      node('b', 'incident-id', incident.incident_id),
+      node('span', '', display(incident.service) + ' · ' + display(incident.environment) + ' · ' + display(incident.current_version, 'release unknown')),
+    );
+    heading.append(identity, node('span', 'incident-severity ' + badgeClass(incident.severity), display(incident.severity) + ' · ' + display(incident.state)));
+    els.incident.append(heading);
+    if (incident.summary) els.incident.append(node('p', 'live-incident-summary', incident.summary));
+
+    const body = node('div', 'live-incident-grid');
+    const timeline = node('div', 'incident-readonly-section');
+    timeline.append(node('h3', '', 'Signal timeline'));
+    const signals = asArray(incident.timeline);
+    if (!signals.length) {
+      timeline.append(node('div', 'empty-row', 'No correlated signals yet.'));
+    } else {
+      signals.slice(-6).forEach((signal) => {
+        const row = node('div', 'incident-signal');
+        row.append(
+          node('span', 'incident-signal-time', displayDate(signal.occurred_at)),
+          node('span', 'incident-signal-type', signal.event_type),
+          node('span', 'incident-signal-relation', signal.relationship),
+        );
+        timeline.append(row);
+      });
+    }
+    body.append(timeline);
+
+    const details = node('div', 'incident-readonly-section');
+    details.append(node('h3', '', 'Investigation and recovery'));
+    const assessment = incident.assessment;
+    const proposal = incident.proposal;
+    const checks = asArray(incident.remediation && incident.remediation.verification_checks);
+    const facts = [
+      ['Healthy release', incident.healthy_version],
+      ['AI assessment', assessment ? assessment.status + ' · ' + assessment.provider + (assessment.model ? ' · ' + assessment.model : '') : 'Not available'],
+      ['Remediation', proposal ? proposal.action_type + ' · ' + proposal.status + (proposal.source_version ? ' · ' + proposal.source_version + ' → ' + proposal.target_version : '') : 'No proposal'],
+      ['Approval', proposal && proposal.approval ? proposal.approval.status : 'No approval'],
+      ['Verification', checks.length ? checks.map((check) => check.check_name + ': ' + (check.passed ? 'passed' : 'failed')).join(' · ') : 'Not run'],
+    ];
+    facts.forEach(([label, value]) => {
+      const fact = node('div', 'incident-fact');
+      fact.append(node('span', '', label), node('b', '', value || '—'));
+      details.append(fact);
+    });
+    const hypotheses = asArray(assessment && assessment.assessment && assessment.assessment.hypotheses);
+    if (hypotheses[0] && hypotheses[0].summary) details.append(node('p', 'incident-assessment-summary', hypotheses[0].summary));
+    const evidence = asArray(incident.evidence);
+    if (evidence.length) {
+      const evidenceList = node('div', 'incident-evidence-list');
+      evidenceList.append(node('b', '', 'Evidence'));
+      evidence.slice(0, 4).forEach((item) => evidenceList.append(node('span', '', item.evidence_key + ' · ' + item.summary)));
+      details.append(evidenceList);
+    }
+    body.append(details);
+    els.incident.append(body);
+  }
+
+  async function loadActiveIncident() {
+    try {
+      renderActiveIncident(await request('/incidents/latest'));
+    } catch (error) {
+      $('#live-incident-state').textContent = 'UNAVAILABLE';
+      setEmpty(els.incident, 'Could not load incident state: ' + error.message);
+    }
+  }
+
   async function refreshAll() {
     $('#refresh-button').disabled = true;
-    await Promise.all([loadHealth(), loadState(), loadLogs()]);
+    await Promise.all([loadHealth(), loadState(), loadLogs(), loadActiveIncident()]);
     $('#refresh-button').disabled = false;
   }
 
@@ -366,18 +443,20 @@
     els.operation.className = 'operation-message';
     els.operation.textContent = `${label}…`;
     try {
-      const result = await request(path, { method: 'POST', body: JSON.stringify(payload) });
+      const options = { method: 'POST' };
+      if (payload !== null) options.body = JSON.stringify(payload);
+      const result = await request(path, options);
       const outcome = field(result, 'status', 'outcome');
       const degraded = isBad(outcome) || isBad(field(result, 'outcome'));
       const message = `${label} completed${outcome ? ` · ${display(outcome)}` : ''}`;
       setOperation(message, degraded ? 'error' : 'success');
       showToast(message, degraded);
-      await Promise.all([loadState(false), loadLogs()]);
+      await Promise.all([loadState(false), loadLogs(), loadActiveIncident()]);
     } catch (error) {
       const message = `${label} failed: ${error.message}`;
       setOperation(message, 'error');
       showToast(message, true);
-      await Promise.all([loadState(false), loadLogs()]);
+      await Promise.all([loadState(false), loadLogs(), loadActiveIncident()]);
     } finally {
       setBusy(buttons, false);
     }
@@ -397,7 +476,7 @@
       const summary = field(response, 'message', 'status') || 'Checkout request accepted';
       els.checkout.append(document.createTextNode(`${display(summary)}${orderId ? ` · Order ${display(orderId)}` : ''}`));
       showToast('Checkout request completed.');
-      await Promise.all([loadState(false), loadLogs()]);
+      await Promise.all([loadState(false), loadLogs(), loadActiveIncident()]);
       if (orderId) await readOrder(String(orderId));
     } catch (error) {
       els.checkout.className = 'checkout-result error';
@@ -411,7 +490,7 @@
 
   async function resetDemo() {
     if (pending) return;
-    const buttons = [$('#reset-button'), $('#deploy-182'), $('#deploy-181'), $('#rollback-button'), $('#checkout-button')];
+    const buttons = [$('#reset-button'), $('#deploy-183'), $('#deploy-182'), $('#deploy-181'), $('#rollback-button'), $('#checkout-button')];
     setBusy(buttons, true);
     setOperation('Resetting demo state…');
     try {
@@ -432,11 +511,12 @@
   $('#refresh-button').addEventListener('click', refreshAll);
   $('#logs-refresh').addEventListener('click', loadLogs);
   $('#checkout-button').addEventListener('click', runCheckout);
-  $('#deploy-182').addEventListener('click', () => runAction([$('#deploy-182'), $('#deploy-181'), $('#rollback-button')], 'Deploy v1.8.2', '/deploy', { version: 'v1.8.2' }));
-  $('#deploy-181').addEventListener('click', () => runAction([$('#deploy-182'), $('#deploy-181'), $('#rollback-button')], 'Deploy v1.8.1', '/deploy', { version: 'v1.8.1' }));
-  $('#rollback-button').addEventListener('click', () => runAction([$('#deploy-182'), $('#deploy-181'), $('#rollback-button')], 'Rollback', '/rollback', {}));
+  $('#deploy-183').addEventListener('click', () => runAction([$('#deploy-183'), $('#deploy-182'), $('#deploy-181'), $('#rollback-button')], 'Deploy v1.8.3', '/deploy', { version: 'v1.8.3' }));
+  $('#deploy-182').addEventListener('click', () => runAction([$('#deploy-183'), $('#deploy-182'), $('#deploy-181'), $('#rollback-button')], 'Deploy v1.8.2', '/deploy', { version: 'v1.8.2' }));
+  $('#deploy-181').addEventListener('click', () => runAction([$('#deploy-183'), $('#deploy-182'), $('#deploy-181'), $('#rollback-button')], 'Deploy v1.8.1', '/deploy', { version: 'v1.8.1' }));
+  $('#rollback-button').addEventListener('click', () => runAction([$('#deploy-183'), $('#deploy-182'), $('#deploy-181'), $('#rollback-button')], 'Rollback', '/rollback', null));
   $('#reset-button').addEventListener('click', resetDemo);
 
   refreshAll();
-  window.setInterval(() => { loadState(false); loadLogs(); }, 30000);
+  window.setInterval(() => { loadState(false); loadLogs(); loadActiveIncident(); }, 30000);
 })();

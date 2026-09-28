@@ -14,8 +14,16 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from psycopg.types.json import Jsonb
 
-from .db import get_connection, initialize_schema
-from .seed import BAD_VERSION, CURRENT_VERSION, SERVICE_NAME, reset_demo, seed_baseline
+from .db import get_connection, incident_workflow_schema_available, initialize_schema
+from .seed import (
+    BAD_VERSION,
+    CURRENT_VERSION,
+    DEPLOYABLE_VERSIONS,
+    HEALTHY_VERSIONS,
+    SERVICE_NAME,
+    reset_demo,
+    seed_baseline,
+)
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -39,6 +47,16 @@ class CheckoutRequest(BaseModel):
 
 class DeployRequest(BaseModel):
     version: str
+
+
+class RollbackRequest(BaseModel):
+    expected_source_version: str
+    target_version: str
+    request_id: str | None = Field(default=None, min_length=1, max_length=120)
+
+
+class CheckoutFaultRequest(BaseModel):
+    enabled: bool
 
 
 def _checkout_probe(conn: Any) -> tuple[str, str, str | None]:
@@ -169,18 +187,24 @@ def checkout(request: CheckoutRequest) -> dict[str, Any]:
     correlation_id = uuid4().hex
     with get_connection() as conn:
         status, version, reason = _checkout_probe(conn)
-        if status != "healthy":
+        fixture = conn.execute(
+            "SELECT value FROM config WHERE config_key='demo_checkout_fault'"
+        ).fetchone()
+        business_fault_enabled = bool(fixture and fixture["value"].get("enabled"))
+        if status != "healthy" or business_fault_enabled:
+            failure_reason = reason if status != "healthy" else "synthetic business transaction failure"
             _event(
                 conn,
                 level="ERROR",
                 event_type="checkout.failed",
                 service=SERVICE_NAME,
-                message="Checkout rejected because the active service is unhealthy",
+                message="Checkout transaction could not be completed",
                 details={
                     "version": version,
-                    "reason": reason or "unhealthy",
+                    "reason": failure_reason or "unhealthy",
                     "correlation_id": correlation_id,
                     "environment": "production-demo",
+                    "failure_mode": "synthetic_business_failure" if business_fault_enabled and status == "healthy" else "application_unhealthy",
                 },
             )
             unavailable = True
@@ -218,7 +242,7 @@ def checkout(request: CheckoutRequest) -> dict[str, Any]:
     if unavailable:
         raise HTTPException(
             status_code=503,
-            detail="Checkout unavailable: active release is incompatible with checkout configuration.",
+            detail="Checkout unavailable: business transaction could not be completed.",
         )
     assert response is not None
     return response
@@ -246,7 +270,7 @@ def get_order(order_id: int) -> dict[str, Any]:
 
 @app.post("/deploy")
 def deploy(request: DeployRequest) -> dict[str, Any]:
-    if request.version not in {CURRENT_VERSION, BAD_VERSION}:
+    if request.version not in DEPLOYABLE_VERSIONS:
         raise HTTPException(status_code=400, detail="Unsupported demo version")
     with get_connection() as conn:
         conn.execute(
@@ -279,34 +303,233 @@ def deploy(request: DeployRequest) -> dict[str, Any]:
 
 
 @app.post("/rollback")
-def rollback() -> dict[str, Any]:
+def rollback(request: RollbackRequest | None = None) -> dict[str, Any]:
+    """Roll back with an atomic source-version check.
+
+    A body is required for automation and binds the operation to an exact
+    approved source and target. The empty-body form remains for the manual
+    Phase 1 console and always targets the known baseline release.
+    """
     with get_connection() as conn:
         previous = conn.execute(
             "SELECT ss.version,ss.status FROM service_state ss JOIN services s ON s.id=ss.service_id "
             "WHERE s.service_key='checkout-api'"
         ).fetchone()
-        if not previous or (previous["version"] == CURRENT_VERSION and previous["status"] == "healthy"):
-            raise HTTPException(status_code=409, detail="Checkout is already on the healthy release")
-        conn.execute(
+        if not previous:
+            raise HTTPException(status_code=404, detail="Checkout service state not found")
+        expected_source_version = request.expected_source_version if request else previous["version"]
+        target_version = request.target_version if request else CURRENT_VERSION
+        request_id = request.request_id if request else None
+        if target_version not in HEALTHY_VERSIONS:
+            raise HTTPException(status_code=400, detail="Unsupported rollback target")
+        if request_id is not None:
+            claimed = conn.execute(
+                "INSERT INTO rollback_requests(request_id,source_version,target_version) "
+                "VALUES (%s,%s,%s) ON CONFLICT (request_id) DO NOTHING RETURNING request_id",
+                (request_id, expected_source_version, target_version),
+            ).fetchone()
+            if not claimed:
+                existing = conn.execute(
+                    "SELECT source_version,target_version,response FROM rollback_requests "
+                    "WHERE request_id=%s",
+                    (request_id,),
+                ).fetchone()
+                if (
+                    not existing
+                    or existing["source_version"] != expected_source_version
+                    or existing["target_version"] != target_version
+                    or existing["response"] is None
+                ):
+                    raise HTTPException(status_code=409, detail="Rollback request ID binding conflict")
+                return existing["response"]
+        if target_version == expected_source_version:
+            if request is None and previous["status"] == "healthy":
+                raise HTTPException(status_code=409, detail="Checkout is already on the healthy release")
+            raise HTTPException(status_code=400, detail="Rollback source and target must differ")
+
+        updated = conn.execute(
             "UPDATE service_state SET version=%s,status='healthy',updated_at=NOW() "
-            "WHERE service_id=(SELECT id FROM services WHERE service_key='checkout-api')",
-            (CURRENT_VERSION,),
-        )
+            "WHERE service_id=(SELECT id FROM services WHERE service_key='checkout-api') "
+            "AND version=%s RETURNING version",
+            (target_version, expected_source_version),
+        ).fetchone()
+        if not updated:
+            current = conn.execute(
+                "SELECT ss.version FROM service_state ss JOIN services s ON s.id=ss.service_id "
+                "WHERE s.service_key='checkout-api'"
+            ).fetchone()
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "stale_source_version",
+                    "expected_source_version": expected_source_version,
+                    "current_version": current["version"] if current else "unknown",
+                },
+            )
         conn.execute(
             "INSERT INTO deployments(service_id,version,outcome,deployed_at,note) "
-            "SELECT id,%s,'succeeded',NOW(),'Rollback to last healthy release' "
+            "SELECT id,%s,'succeeded',NOW(),'Rollback operation completed' "
             "FROM services WHERE service_key='checkout-api'",
-            (CURRENT_VERSION,),
+            (target_version,),
         )
         _event(
             conn,
             level="INFO",
             event_type="deployment.rollback",
             service=SERVICE_NAME,
-            message="Rolled back to the last healthy release",
-            details={"version": CURRENT_VERSION, "previous_version": previous["version"], "target_version": CURRENT_VERSION, "outcome": "succeeded"},
+            message="Rollback operation completed",
+            details={
+                "version": target_version,
+                "source_version": expected_source_version,
+                "previous_version": expected_source_version,
+                "target_version": target_version,
+                "outcome": "succeeded",
+                "request_id": request_id,
+                "environment": "production-demo",
+            },
         )
-    return {"version": CURRENT_VERSION, "status": "healthy", "outcome": "succeeded"}
+        result = {
+            "version": target_version,
+            "source_version": expected_source_version,
+            "target_version": target_version,
+            "outcome": "succeeded",
+            "request_id": request_id,
+        }
+        if request_id is not None:
+            conn.execute(
+                "UPDATE rollback_requests SET response=%s WHERE request_id=%s",
+                (Jsonb(result), request_id),
+            )
+    return result
+
+
+@app.post("/demo/checkout-fault")
+def set_checkout_fault(request: CheckoutFaultRequest) -> dict[str, bool]:
+    """Toggle a demo-only business failure that does not affect health probes."""
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO config(config_key,value,updated_at) VALUES ('demo_checkout_fault',%s,NOW()) "
+            "ON CONFLICT (config_key) DO UPDATE SET value=EXCLUDED.value,updated_at=NOW()",
+            (Jsonb({"enabled": request.enabled}),),
+        )
+    return {"checkout_failure_enabled": request.enabled}
+
+
+@app.get("/incidents/latest")
+def latest_incident() -> dict[str, Any]:
+    """Expose a read-only view of n8n's active incident or latest recovery."""
+    with get_connection() as conn:
+        if not incident_workflow_schema_available(conn):
+            return {"available": False, "incident": None}
+        incident = conn.execute(
+            "SELECT incident_id,service,environment,severity,state,correlation_key,"
+            "opened_at,updated_at,revision,summary,current_version,healthy_version "
+            "FROM ir_incidents "
+            "ORDER BY CASE WHEN state NOT IN ('RECOVERED','RESOLVED') THEN 0 ELSE 1 END,"
+            "updated_at DESC,opened_at DESC LIMIT 1"
+        ).fetchone()
+        if not incident:
+            return {"available": True, "incident": None}
+
+        events = conn.execute(
+            "SELECT e.event_id,e.event_type,e.service,e.environment,e.occurred_at,"
+            "ie.relationship,e.correlation_hint,e.metadata "
+            "FROM ir_incident_events ie JOIN ir_events e ON e.event_id=ie.event_id "
+            "WHERE ie.incident_id=%s ORDER BY e.occurred_at,e.event_id",
+            (incident["incident_id"],),
+        ).fetchall()
+        evidence = conn.execute(
+            "SELECT evidence_key,kind,summary,source_event_id,created_at "
+            "FROM ir_evidence WHERE incident_id=%s ORDER BY evidence_id",
+            (incident["incident_id"],),
+        ).fetchall()
+        assessment = conn.execute(
+            "SELECT status,provider,model,duration_ms,assessment,validation_errors,created_at "
+            "FROM ir_assessments WHERE incident_id=%s "
+            "ORDER BY revision DESC,assessment_id DESC LIMIT 1",
+            (incident["incident_id"],),
+        ).fetchone()
+        proposal = conn.execute(
+            "SELECT p.proposal_id,p.revision,p.action_type,p.source_version,p.target_version,"
+            "p.reason,p.evidence_refs,p.status,p.created_at,p.expires_at,"
+            "a.approval_id,a.status AS approval_status,a.decision,a.expires_at AS approval_expires_at,"
+            "a.decided_at,a.consumed_at "
+            "FROM ir_proposals p LEFT JOIN ir_approvals a ON a.proposal_id=p.proposal_id "
+            "WHERE p.incident_id=%s ORDER BY p.revision DESC,p.created_at DESC LIMIT 1",
+            (incident["incident_id"],),
+        ).fetchone()
+        attempt = conn.execute(
+            "SELECT attempt_id,request_id,source_version,target_version,result,http_status,"
+            "observed_version,error,started_at,completed_at FROM ir_remediation_attempts "
+            "WHERE proposal_id IN (SELECT proposal_id FROM ir_proposals WHERE incident_id=%s) "
+            "ORDER BY attempt_id DESC LIMIT 1",
+            (incident["incident_id"],),
+        ).fetchone()
+        checks = []
+        if attempt:
+            checks = conn.execute(
+                "SELECT check_name,expected,observed,passed,details,checked_at "
+                "FROM ir_verification_checks WHERE attempt_id=%s ORDER BY verification_id",
+                (attempt["attempt_id"],),
+            ).fetchall()
+
+    def iso(value: Any) -> str | None:
+        return value.isoformat() if value else None
+
+    return {
+        "available": True,
+        "incident": {
+            **incident,
+            "is_active": incident["state"] not in {"RECOVERED", "RESOLVED"},
+            "opened_at": iso(incident["opened_at"]),
+            "updated_at": iso(incident["updated_at"]),
+            "timeline": [
+                {
+                    **row,
+                    "occurred_at": iso(row["occurred_at"]),
+                }
+                for row in events
+            ],
+            "evidence": [
+                {**row, "created_at": iso(row["created_at"])}
+                for row in evidence
+            ],
+            "assessment": None if not assessment else {
+                **assessment,
+                "created_at": iso(assessment["created_at"]),
+            },
+            "proposal": None if not proposal else {
+                key: value
+                for key, value in {
+                    **proposal,
+                    "created_at": iso(proposal["created_at"]),
+                    "expires_at": iso(proposal["expires_at"]),
+                    "approval_expires_at": iso(proposal["approval_expires_at"]),
+                    "decided_at": iso(proposal["decided_at"]),
+                    "consumed_at": iso(proposal["consumed_at"]),
+                }.items()
+                if key not in {"approval_id", "approval_status", "decision", "approval_expires_at", "decided_at", "consumed_at"}
+            } | ({
+                "approval": {
+                    "approval_id": proposal["approval_id"],
+                    "status": proposal["approval_status"],
+                    "decision": proposal["decision"],
+                    "expires_at": iso(proposal["approval_expires_at"]),
+                    "decided_at": iso(proposal["decided_at"]),
+                    "consumed_at": iso(proposal["consumed_at"]),
+                }
+            } if proposal["approval_id"] else {}),
+            "remediation": None if not attempt else {
+                **attempt,
+                "started_at": iso(attempt["started_at"]),
+                "completed_at": iso(attempt["completed_at"]),
+                "verification_checks": [
+                    {**row, "checked_at": iso(row["checked_at"])}
+                    for row in checks
+                ],
+            },
+        },
+    }
 
 
 @app.get("/logs")

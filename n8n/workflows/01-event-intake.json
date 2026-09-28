@@ -1,0 +1,254 @@
+{
+  "name": "IR 01 - Event Intake and Correlation",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ir/events",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "8aaa4072-2e0c-4f94-9902-8db2a094c521",
+      "name": "Canonical Event Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-1000, -120],
+      "webhookId": "ir-event-intake-canonical"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "seconds",
+              "secondsInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "66331a36-7f66-429e-9275-5442cbd7e06d",
+      "name": "Poll Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-1000, 140]
+    },
+    {
+      "parameters": {
+        "url": "http://relaycart-api:8000/logs",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "a28e842a-c930-483f-86e0-3108a2ed503c",
+      "name": "Fetch RelayCart Application Events",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-760, 140]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const allowedTypes = new Set(['deployment.completed', 'health.failed', 'checkout.failed', 'manual.test']);\nconst allowedSources = new Set(['relaycart', 'manual.test']);\nconst allowedMetadata = new Set(['version', 'outcome', 'reason', 'deployment_id', 'order_id', 'correlation_id', 'environment', 'message', 'level', 'log_id', 'impact_scope', 'fixture_mode']);\nconst allowedFixtureModes = new Set(['timeout','http_failure','malformed_json','schema_invalid','unknown_evidence_ref']);\nconst out = [];\nfunction bounded(value, max = 2000) {\n  if (typeof value === 'string') return value.slice(0, max);\n  if (typeof value === 'number' || typeof value === 'boolean') return value;\n  return undefined;\n}\nfunction mapRelayCart(row) {\n  const details = row.details && typeof row.details === 'object' ? row.details : {};\n  const at = row.created_at || row.timestamp;\n  const occurred = new Date(at);\n  const id = String(row.id ?? details.log_id ?? '');\n  if (!id || Number.isNaN(occurred.getTime())) return null;\n  const metadata = {\n    version: details.version, outcome: details.outcome, reason: details.reason,\n    deployment_id: details.deployment_id, order_id: details.order_id,\n    correlation_id: details.correlation_id, environment: details.environment,\n    message: row.message, level: row.level, log_id: id\n  };\n  return {\n    event_id: `relaycart:${id}:${occurred.toISOString()}`, source: 'relaycart',\n    event_type: row.event_type, service: row.service,\n    environment: details.environment || 'production-demo', occurred_at: occurred.toISOString(),\n    correlation_hint: details.correlation_id || (details.deployment_id ? `deployment-${details.deployment_id}` : null),\n    severity_hint: null, metadata\n  };\n}\nfunction normalize(raw, mode) {\n  const errors = [];\n  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {valid:false, errors:['event must be a JSON object'], ingest_mode:mode};\n  const event = {...raw};\n  if (typeof event.event_id !== 'string' || event.event_id.length < 1 || event.event_id.length > 240) errors.push('event_id must be 1-240 characters');\n  if (!allowedSources.has(event.source)) errors.push('source is unsupported');\n  if (!allowedTypes.has(event.event_type)) errors.push('event_type is unsupported');\n  if (typeof event.service !== 'string' || !event.service.trim() || event.service.length > 120) errors.push('service is required and must be at most 120 characters');\n  if (typeof event.environment !== 'string' || !event.environment.trim() || event.environment.length > 80) errors.push('environment is required and must be at most 80 characters');\n  const date = new Date(event.occurred_at);\n  if (!event.occurred_at || Number.isNaN(date.getTime())) errors.push('occurred_at must be a valid timestamp');\n  if (event.severity_hint != null && !['SEV-1','SEV-2','SEV-3'].includes(event.severity_hint)) errors.push('severity_hint must be null or SEV-1/2/3');\n  if (event.metadata == null) event.metadata = {};\n  if (typeof event.metadata !== 'object' || Array.isArray(event.metadata)) errors.push('metadata must be an object');\n  const clean = {};\n  if (event.metadata && typeof event.metadata === 'object' && !Array.isArray(event.metadata)) {\n    for (const [key,value] of Object.entries(event.metadata)) {\n      if (allowedMetadata.has(key)) { const v = bounded(value); if (v !== undefined) clean[key] = v; }\n    }\n  }\n  if (clean.fixture_mode && (event.source !== 'manual.test' || !allowedFixtureModes.has(clean.fixture_mode))) errors.push('fixture_mode is restricted to the approved manual.test fixtures');\n  if (clean.impact_scope && (event.source !== 'manual.test' || !['limited','important','complete_outage'].includes(clean.impact_scope))) errors.push('impact_scope is restricted to manual.test values');\n  if (event.correlation_hint != null && (typeof event.correlation_hint !== 'string' || event.correlation_hint.length > 240)) errors.push('correlation_hint must be null or at most 240 characters');\n  return {valid:errors.length===0, errors, ingest_mode:mode, ...(errors.length===0 ? {event:{...event, occurred_at:date.toISOString(), metadata:clean, correlation_hint:event.correlation_hint || clean.correlation_id || null}} : {})};\n}\nfor (const item of $input.all()) {\n  const root = item.json || {};\n  const polling = Array.isArray(root.events);\n  const mode = polling ? 'poll' : 'webhook';\n  if (polling) {\n    for (const row of root.events) {\n      if (!row || !['deployment.completed','health.failed','checkout.failed'].includes(row.event_type)) continue;\n      const event = mapRelayCart(row);\n      if (!event) continue;\n      const result = normalize(event, mode);\n      if (result.valid) out.push({json:result});\n    }\n  } else {\n    const raw = root.body ?? root;\n    out.push({json:normalize(raw, mode)});\n  }\n}\nreturn out;"
+      },
+      "id": "dcb15373-d7a2-4d44-a3bd-a98654496cc9",
+      "name": "Normalize and Validate Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-520, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "36982060-9d0e-4811-8257-811d27e32504",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5eccbfb4-b953-43a0-9dcc-e0307b92aa34",
+      "name": "Event Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-280, 0]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return {json:{status:'invalid', accepted:false, errors:$json.errors || ['invalid event']}};"
+      },
+      "id": "c68509f3-c487-45cc-b286-80b2508c778c",
+      "name": "Return Invalid Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-40, 180]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH inserted AS (\n  INSERT INTO ir_events (event_id, source, event_type, service, environment, occurred_at, correlation_hint, severity_hint, metadata)\n  VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $7, $8, $9::jsonb)\n  ON CONFLICT (event_id) DO NOTHING\n  RETURNING event_id\n)\nSELECT $1::text AS event_id, $3::text AS event_type, $10::text AS ingest_mode,\n       EXISTS (SELECT 1 FROM inserted) AS accepted;",
+        "options": {
+          "queryReplacement": "={{ [$json.event.event_id, $json.event.source, $json.event.event_type, $json.event.service, $json.event.environment, $json.event.occurred_at, $json.event.correlation_hint, $json.event.severity_hint, $json.event.metadata, $json.ingest_mode] }}"
+        }
+      },
+      "id": "f2a87973-31c1-4210-98fa-f3db1732ceaf",
+      "name": "Persist Event Idempotently",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [-40, -80],
+      "credentials": {
+        "postgres": {
+          "id": "dJp5v4e6qmyffUpN",
+          "name": "RelayCart Phase 2 Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b7119d7d-828d-4abc-ab23-bd77a77d963d",
+              "leftValue": "={{ $json.accepted }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "98a31559-2c65-4928-9320-e115bd7f224b",
+      "name": "First Delivery?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [200, -80]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return {json:{status:'duplicate', accepted:false, event_id:$json.event_id}};"
+      },
+      "id": "9853cbc8-f8b8-4dd6-8f4d-6d326c29338a",
+      "name": "Return Duplicate Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 80]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH e AS (\n  SELECT * FROM ir_events WHERE event_id = $1\n), opened_or_existing AS (\n  INSERT INTO ir_incidents (service, environment, severity, state, correlation_key, latest_event_at, current_version, summary)\n  SELECT service, environment, 'SEV-3', 'OPEN', COALESCE(NULLIF(correlation_hint, ''), event_id), occurred_at, metadata->>'version',\n         left(COALESCE(NULLIF(metadata->>'reason',''), NULLIF(metadata->>'message',''), event_type), 1500)\n  FROM e WHERE event_type IN ('health.failed', 'checkout.failed')\n  ON CONFLICT (service, environment) WHERE state NOT IN ('RECOVERED', 'RESOLVED')\n  DO UPDATE SET latest_event_at = GREATEST(ir_incidents.latest_event_at, EXCLUDED.latest_event_at),\n                current_version = COALESCE(EXCLUDED.current_version, ir_incidents.current_version),\n                updated_at = NOW(), revision = ir_incidents.revision + 1\n  RETURNING incident_id\n), deployment_target AS (\n  UPDATE ir_incidents i SET latest_event_at=GREATEST(i.latest_event_at,e.occurred_at),\n    current_version=COALESCE(e.metadata->>'version',i.current_version),updated_at=NOW(),revision=i.revision+1\n  FROM e WHERE e.event_type='deployment.completed' AND i.service=e.service AND i.environment=e.environment\n    AND i.state NOT IN ('RECOVERED','RESOLVED')\n    AND (i.correlation_key=e.correlation_hint OR abs(extract(epoch FROM (i.latest_event_at-e.occurred_at)))<=1800)\n  RETURNING i.incident_id\n), target AS (\n  SELECT incident_id FROM opened_or_existing\n  UNION ALL SELECT incident_id FROM deployment_target\n  UNION ALL\n  SELECT i.incident_id FROM ir_incidents i CROSS JOIN e\n  WHERE e.event_type = 'deployment.completed' AND i.service = e.service AND i.environment = e.environment\n    AND i.state NOT IN ('RECOVERED', 'RESOLVED')\n    AND (i.correlation_key = e.correlation_hint OR abs(extract(epoch FROM (i.latest_event_at - e.occurred_at))) <= 1800)\n    AND NOT EXISTS (SELECT 1 FROM opened_or_existing) AND NOT EXISTS (SELECT 1 FROM deployment_target)\n  ORDER BY incident_id LIMIT 1\n), linked_current AS (\n  INSERT INTO ir_incident_events (incident_id, event_id, relationship)\n  SELECT target.incident_id, e.event_id, CASE WHEN e.event_type = 'deployment.completed' THEN 'deployment_context'\n                                                WHEN e.event_type = 'manual.test' THEN 'related' ELSE 'trigger' END\n  FROM target CROSS JOIN e\n  ON CONFLICT (incident_id, event_id) DO NOTHING\n  RETURNING incident_id\n), linked_deployments AS (\n  INSERT INTO ir_incident_events (incident_id, event_id, relationship)\n  SELECT target.incident_id, d.event_id, 'deployment_context'\n  FROM target CROSS JOIN e JOIN ir_events d ON d.service = e.service AND d.environment = e.environment\n  WHERE e.event_type IN ('health.failed', 'checkout.failed') AND d.event_type = 'deployment.completed'\n    AND d.occurred_at <= e.occurred_at AND d.occurred_at >= e.occurred_at - interval '30 minutes'\n  ON CONFLICT (incident_id, event_id) DO NOTHING\n  RETURNING incident_id\n)\nSELECT e.event_id, e.event_type, $2::text AS ingest_mode, true AS accepted,\n       (SELECT incident_id FROM target LIMIT 1) AS incident_id,\n       (SELECT count(*) FROM linked_deployments) AS deployment_context_count\nFROM e;",
+        "options": {
+          "queryReplacement": "={{ [$json.event_id, $json.ingest_mode] }}"
+        }
+      },
+      "id": "271ca8ec-492c-48d2-b6de-dfb380e77ba0",
+      "name": "Correlate Failure and Deployment Context",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [440, -180],
+      "credentials": {
+        "postgres": {
+          "id": "dJp5v4e6qmyffUpN",
+          "name": "RelayCart Phase 2 Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH event_row AS (\n  SELECT e.*, $2::text AS ingest_mode, $3::text AS incident_id FROM ir_events e WHERE e.event_id = $1\n), linked_evidence AS (\n  INSERT INTO ir_evidence (incident_id, evidence_key, kind, summary, source_event_id, payload)\n  SELECT ie.incident_id, 'E-' || substr(md5(ie.incident_id || ':' || linked.event_id), 1, 12), 'event',\n         left(linked.event_type || ' for ' || linked.service || ' on ' || COALESCE(linked.metadata->>'version','unknown version') || ': ' ||\n              COALESCE(NULLIF(linked.metadata->>'reason',''), NULLIF(linked.metadata->>'message',''), COALESCE(linked.metadata->>'outcome','signal recorded')), 1900),\n         linked.event_id, jsonb_build_object('event_id', linked.event_id, 'source', linked.source, 'event_type', linked.event_type,\n              'occurred_at', linked.occurred_at, 'correlation_hint', linked.correlation_hint, 'metadata', linked.metadata)\n  FROM event_row current_event JOIN ir_incident_events ie ON ie.incident_id=current_event.incident_id\n  JOIN ir_events linked ON linked.event_id=ie.event_id\n  ON CONFLICT (incident_id, evidence_key) DO NOTHING\n  RETURNING incident_id\n), signal_counts AS (\n  SELECT i.incident_id, COALESCE(bool_or(e.event_type='health.failed'),false) AS has_health_failure,\n         COALESCE(bool_or(e.event_type='checkout.failed'),false) AS has_checkout_failure,\n         COALESCE(bool_or(e.source='manual.test' AND e.metadata->>'impact_scope'='complete_outage'),false) AS broad_outage\n  FROM ir_incidents i LEFT JOIN ir_incident_events ie ON ie.incident_id=i.incident_id\n  LEFT JOIN ir_events e ON e.event_id=ie.event_id\n  WHERE i.incident_id=(SELECT incident_id FROM event_row)\n  GROUP BY i.incident_id\n), transitioned AS (\n  UPDATE ir_incidents i SET\n    state = CASE WHEN i.state IN ('OPEN','WAITING_FOR_APPROVAL') THEN 'INVESTIGATING' ELSE i.state END,\n    severity = CASE WHEN signal_counts.broad_outage THEN 'SEV-1'\n                     WHEN signal_counts.has_health_failure AND signal_counts.has_checkout_failure THEN 'SEV-2' ELSE 'SEV-3' END,\n    current_version = COALESCE((SELECT metadata->>'version' FROM event_row), i.current_version),\n    healthy_version = COALESCE(i.healthy_version, (\n      SELECT d.metadata->>'version' FROM ir_incident_events prior\n      JOIN ir_events d ON d.event_id=prior.event_id\n      WHERE prior.incident_id=i.incident_id AND d.event_type='deployment.completed'\n        AND d.metadata->>'version' IS DISTINCT FROM i.current_version\n      ORDER BY d.occurred_at DESC LIMIT 1\n    )),\n    updated_at=NOW()\n  FROM signal_counts WHERE i.incident_id=signal_counts.incident_id\n    AND i.state IN ('OPEN','INVESTIGATING','WAITING_FOR_APPROVAL','NEEDS_ATTENTION')\n  RETURNING i.incident_id, i.service, i.environment, i.severity, i.state, i.revision, i.current_version, i.healthy_version\n), cancelled_proposals AS (\n  UPDATE ir_proposals p SET status='CANCELLED' FROM transitioned t\n  WHERE p.incident_id=t.incident_id AND p.revision<t.revision AND p.status='PROPOSED'\n  RETURNING p.proposal_id\n), expired_approvals AS (\n  UPDATE ir_approvals a SET status='EXPIRED' FROM cancelled_proposals p\n  WHERE a.proposal_id=p.proposal_id AND a.status='PENDING'\n  RETURNING a.approval_id\n)\nSELECT (SELECT event_id FROM event_row) AS event_id, (SELECT event_type FROM event_row) AS event_type,\n       (SELECT ingest_mode FROM event_row) AS ingest_mode, (SELECT incident_id FROM event_row) AS incident_id,\n       (SELECT count(*) FROM linked_evidence) AS evidence_added,\n       transitioned.severity, transitioned.state, transitioned.revision, transitioned.current_version, transitioned.healthy_version,\n       'accepted'::text AS status, true AS accepted\nFROM (SELECT 1) base LEFT JOIN transitioned ON TRUE;",
+        "options": {
+          "queryReplacement": "={{ [$json.event_id, $json.ingest_mode, $json.incident_id] }}"
+        }
+      },
+      "id": "bb9a42b8-f59f-42f0-99a1-9183f93cff4d",
+      "name": "Apply Deterministic Severity and Evidence",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [680, -180],
+      "credentials": {
+        "postgres": {
+          "id": "dJp5v4e6qmyffUpN",
+          "name": "RelayCart Phase 2 Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return {json:{status:$json.status || 'accepted', accepted:true, duplicate:false, event_id:$json.event_id, event_type:$json.event_type, incident_id:$json.incident_id || null, severity:$json.severity || null, state:$json.state || null, revision:$json.revision || null, current_version:$json.current_version || null, healthy_version:$json.healthy_version || null, evidence_added:Number($json.evidence_added || 0)}};"
+      },
+      "id": "bc494a50-ec25-49f4-b7a7-d88f24af7906",
+      "name": "Return Accepted Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, -180]
+    }
+  ],
+  "connections": {
+    "Canonical Event Webhook": {
+      "main": [[{"node":"Normalize and Validate Event","type":"main","index":0}]]
+    },
+    "Poll Schedule": {
+      "main": [[{"node":"Fetch RelayCart Application Events","type":"main","index":0}]]
+    },
+    "Fetch RelayCart Application Events": {
+      "main": [[{"node":"Normalize and Validate Event","type":"main","index":0}]]
+    },
+    "Normalize and Validate Event": {
+      "main": [[{"node":"Event Valid?","type":"main","index":0}]]
+    },
+    "Event Valid?": {
+      "main": [
+        [{"node":"Persist Event Idempotently","type":"main","index":0}],
+        [{"node":"Return Invalid Event","type":"main","index":0}]
+      ]
+    },
+    "Persist Event Idempotently": {
+      "main": [[{"node":"First Delivery?","type":"main","index":0}]]
+    },
+    "First Delivery?": {
+      "main": [
+        [{"node":"Correlate Failure and Deployment Context","type":"main","index":0}],
+        [{"node":"Return Duplicate Event","type":"main","index":0}]
+      ]
+    },
+    "Correlate Failure and Deployment Context": {
+      "main": [[{"node":"Apply Deterministic Severity and Evidence","type":"main","index":0}]]
+    },
+    "Apply Deterministic Severity and Evidence": {
+      "main": [[{"node":"Return Accepted Event","type":"main","index":0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "UTC",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true
+  }
+}

@@ -1,0 +1,217 @@
+{
+  "name": "IR 05 - Recovery Verification",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "d42a17e7-4150-4ad0-a303-38a0d313a8e5",
+      "name": "Verification Request",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [-920, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT a.attempt_id,p.incident_id,a.proposal_id,a.target_version,a.request_id,\n       (a.result='succeeded' AND p.status='EXECUTED' AND i.state='VERIFYING') AS eligible\nFROM ir_remediation_attempts a\nJOIN ir_proposals p ON p.proposal_id=a.proposal_id\nJOIN ir_incidents i ON i.incident_id=p.incident_id\nWHERE a.attempt_id=$1::bigint;",
+        "options": {
+          "queryReplacement": "={{ [$json.attempt_id] }}"
+        }
+      },
+      "alwaysOutputData": true,
+      "id": "232539af-3811-4e56-bb35-607e4f01540e",
+      "name": "Load Executed Rollback",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [-680, 0],
+      "credentials": {
+        "postgres": {
+          "id": "dJp5v4e6qmyffUpN",
+          "name": "RelayCart Phase 2 Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2},
+          "conditions": [{"id": "is-eligible", "leftValue": "={{ $json.eligible }}", "rightValue": true, "operator": {"type": "boolean", "operation": "equals"}}],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "93958f84-cc72-49ea-bc1e-07a230719df8",
+      "name": "Attempt Eligible?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-440, 0]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return {json:{status:'verification_rejected', reason:'attempt is not an executed rollback in VERIFYING state'}};"
+      },
+      "id": "f9b0daf3-1c71-4e50-8ac1-836f4e3a23e4",
+      "name": "Reject Unbound Verification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-200, 180]
+    },
+    {
+      "parameters": {
+        "url": "http://relaycart-api:8000/version",
+        "options": {"timeout": 5000, "response": {"response": {"fullResponse": true, "neverError": true, "responseFormat": "json"}}}
+      },
+      "id": "8891049c-512e-4890-9ac7-e3d0f5126012",
+      "name": "Read Back Active Version",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "onError": "continueRegularOutput",
+      "position": [-200, -100]
+    },
+    {
+      "parameters": {
+        "url": "http://relaycart-api:8000/health",
+        "options": {"timeout": 5000, "response": {"response": {"fullResponse": true, "neverError": true, "responseFormat": "json"}}}
+      },
+      "id": "0b7667b0-40c3-4483-bcc2-3441cfd8721d",
+      "name": "Check Service Health",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "onError": "continueRegularOutput",
+      "position": [40, -100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://relaycart-api:8000/checkout",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={\"customer_slug\":\"acme-bikes\",\"amount\":49.00,\"currency\":\"USD\"}",
+        "options": {"timeout": 8000, "response": {"response": {"fullResponse": true, "neverError": true, "responseFormat": "json"}}}
+      },
+      "id": "743c867e-c55e-4d9d-8614-cafcb3a2c91c",
+      "name": "Run Synthetic Checkout",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "onError": "continueRegularOutput",
+      "position": [280, -100]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const checkout = $json || {};\nconst body = checkout.body && typeof checkout.body === 'object' ? checkout.body : {};\nconst orderId = Number(body.order_id);\nreturn {json:{checkout_status:Number(checkout.statusCode || 0),order_id:Number.isInteger(orderId) && orderId > 0 ? orderId : null,checkout_body:body,attempt:$('Load Executed Rollback').first().json,version: $('Read Back Active Version').first().json,health: $('Check Service Health').first().json}};"
+      },
+      "id": "b01231d0-6547-4aee-a58d-9876174271ea",
+      "name": "Prepare Verification Checks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, -100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2},
+          "conditions": [{"id": "has-order", "leftValue": "={{ $json.order_id }}", "rightValue": 0, "operator": {"type": "number", "operation": "gt"}}],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "376d0cd3-5819-4b7e-b529-e0b73be14dca",
+      "name": "Order Was Created?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [760, -100]
+    },
+    {
+      "parameters": {
+        "url": "=http://relaycart-api:8000/orders/{{ $json.order_id }}",
+        "options": {"timeout": 5000, "response": {"response": {"fullResponse": true, "neverError": true, "responseFormat": "json"}}}
+      },
+      "id": "11a23d76-84dd-4f7a-a251-935285e36e25",
+      "name": "Read Back Created Order",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "onError": "continueRegularOutput",
+      "position": [1000, -180]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const response=$json || {}; const body=response.body && typeof response.body==='object' ? response.body : {}; const prepared=$('Prepare Verification Checks').first().json; const expected=prepared.attempt.target_version; const actual=prepared.version.body?.version || 'unknown'; const health=prepared.health.body || {}; const orderMatches=Number(response.statusCode)===200 && Number(body.order_id)===prepared.order_id && body.status==='created' && body.customer_slug==='acme-bikes'; const checks=[{check_name:'version',expected,observed:actual,passed:Number(prepared.version.statusCode)===200 && actual===expected,details:{http_status:Number(prepared.version.statusCode||0)}},{check_name:'health',expected:'healthy',observed:health.status || 'unknown',passed:Number(prepared.health.statusCode)===200 && health.status==='healthy' && health.version===expected,details:{http_status:Number(prepared.health.statusCode||0),version:health.version||null}},{check_name:'synthetic_checkout',expected:'HTTP 201 + order created',observed:Number(prepared.checkout_status)===201 ? 'order_created' : `HTTP ${prepared.checkout_status}`,passed:Number(prepared.checkout_status)===201 && Number.isInteger(prepared.order_id),details:{http_status:prepared.checkout_status,order_id:prepared.order_id}},{check_name:'order_readback',expected:'HTTP 200 + matching created order',observed:orderMatches?'matching_order':`HTTP ${Number(response.statusCode||0)}`,passed:orderMatches,details:{http_status:Number(response.statusCode||0),order_id:body.order_id||null,status:body.status||null}}]; const recovered=checks.every(c=>c.passed); return {json:{attempt_id:prepared.attempt.attempt_id,incident_id:prepared.attempt.incident_id,request_id:prepared.attempt.request_id,target_version:expected,recovered,checks}};"
+      },
+      "id": "281933c8-0c7c-4f1b-90f1-6ee002961f67",
+      "name": "Evaluate All Recovery Conditions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1240, -180]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const p=$('Prepare Verification Checks').first().json; const expected=p.attempt.target_version; const actual=p.version.body?.version || 'unknown'; const health=p.health.body || {}; const checks=[{check_name:'version',expected,observed:actual,passed:Number(p.version.statusCode)===200 && actual===expected,details:{http_status:Number(p.version.statusCode||0)}},{check_name:'health',expected:'healthy',observed:health.status||'unknown',passed:Number(p.health.statusCode)===200 && health.status==='healthy' && health.version===expected,details:{http_status:Number(p.health.statusCode||0),version:health.version||null}},{check_name:'synthetic_checkout',expected:'HTTP 201 + order created',observed:Number(p.checkout_status)===201?'order_created':`HTTP ${p.checkout_status}`,passed:Number(p.checkout_status)===201 && Number.isInteger(p.order_id),details:{http_status:p.checkout_status,order_id:p.order_id}} ,{check_name:'order_readback',expected:'matching order exists',observed:'not_run_checkout_failed',passed:false,details:{http_status:0,reason:'synthetic checkout did not create an order'}}]; return {json:{attempt_id:p.attempt.attempt_id,incident_id:p.attempt.incident_id,request_id:p.attempt.request_id,target_version:expected,recovered:false,checks}};"
+      },
+      "id": "bfe47b37-e851-410d-8c82-9e9c92228e1f",
+      "name": "Record Missing Order Readback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 40]
+    },
+    {
+      "parameters": {"url": "http://relaycart-api:8000/version", "options": {"timeout": 5000, "response": {"response": {"fullResponse": true, "neverError": true, "responseFormat": "json"}}}},
+      "id": "f2deed3c-dce4-46ea-9076-b5009f3f5d32",
+      "name": "Final Version Read-Back",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "onError": "continueRegularOutput",
+      "position": [1240, 100]
+    },
+    {
+      "parameters": {"mode": "runOnceForEachItem", "jsCode": "const successPath=$('Read Back Created Order').isExecuted; const candidate=successPath?$('Evaluate All Recovery Conditions').first().json:$('Record Missing Order Readback').first().json; const response=$json||{}; const body=response.body&&typeof response.body==='object'?response.body:{}; const actual=body.version||'unknown'; const checks=candidate.checks.map(c=>c.check_name==='version'?{...c,observed:actual,passed:Number(response.statusCode)===200&&actual===candidate.target_version,details:{...c.details,http_status:Number(response.statusCode||0),read_after_business_checks:true}}:c); return {json:{attempt_id:candidate.attempt_id,incident_id:candidate.incident_id,request_id:candidate.request_id,target_version:candidate.target_version,final_version_status:Number(response.statusCode||0),final_version:actual,checks}};"},
+      "id": "8a44a9d7-05d2-4a44-8263-f2ae7064b305",
+      "name": "Finalize Recovery Evidence",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1480, 100]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH input AS (SELECT $1::bigint AS attempt_id,$2::text AS incident_id,$3::text AS request_id,$4::text AS target_version,$5::jsonb AS checks),\ncurrent_release AS MATERIALIZED (SELECT ss.version FROM service_state ss JOIN services s ON s.id=ss.service_id WHERE s.service_key='checkout-api' FOR UPDATE OF ss),\nlocked_state AS MATERIALIZED (SELECT i.incident_id,i.state,a.attempt_id,a.request_id,a.result,p.proposal_id,p.status AS proposal_status,p.action_type,p.target_version FROM ir_incidents i JOIN ir_proposals p ON p.incident_id=i.incident_id JOIN ir_remediation_attempts a ON a.proposal_id=p.proposal_id WHERE i.incident_id=$2 AND i.state='VERIFYING' AND a.attempt_id=$1 AND a.request_id=$3 AND a.result='succeeded' AND p.status='EXECUTED' AND p.action_type='rollback' AND p.target_version=$4 FOR UPDATE OF i,p,a),\neligible AS (SELECT input.*,current_release.version AS database_version FROM input CROSS JOIN current_release JOIN locked_state l ON l.incident_id=input.incident_id AND l.attempt_id=input.attempt_id),\ninserted AS (INSERT INTO ir_verification_checks(attempt_id,check_name,expected,observed,passed,details) SELECT e.attempt_id,c.check_name,c.expected,CASE WHEN c.check_name='version' THEN e.database_version ELSE c.observed END,CASE WHEN c.check_name='version' THEN c.passed AND e.database_version=e.target_version ELSE c.passed END,c.details||jsonb_build_object('database_version',e.database_version) FROM eligible e CROSS JOIN LATERAL jsonb_to_recordset(e.checks) AS c(check_name text,expected text,observed text,passed boolean,details jsonb) ON CONFLICT(attempt_id,check_name) DO UPDATE SET expected=EXCLUDED.expected,observed=EXCLUDED.observed,passed=EXCLUDED.passed,details=EXCLUDED.details,checked_at=NOW() RETURNING check_name,passed),\ncheck_summary AS (SELECT count(*)::integer AS check_count,COALESCE(bool_and(passed),false) AS all_passed,COALESCE(array_agg(check_name ORDER BY check_name),ARRAY[]::text[]) AS check_names FROM inserted),\nmoved AS (UPDATE ir_incidents i SET state=CASE WHEN c.check_count=4 AND c.check_names=ARRAY['health','order_readback','synthetic_checkout','version']::text[] AND c.all_passed THEN 'RECOVERED' ELSE 'NEEDS_ATTENTION' END,recovered_at=CASE WHEN c.check_count=4 AND c.check_names=ARRAY['health','order_readback','synthetic_checkout','version']::text[] AND c.all_passed THEN NOW() ELSE NULL END,updated_at=NOW(),summary=CASE WHEN c.check_count=4 AND c.check_names=ARRAY['health','order_readback','synthetic_checkout','version']::text[] AND c.all_passed THEN 'Rollback verified by final version, health, checkout, and order read-back.' ELSE 'Rollback completed but one or more recovery checks failed.' END FROM eligible e CROSS JOIN check_summary c WHERE i.incident_id=e.incident_id AND i.state='VERIFYING' RETURNING i.incident_id,i.state)\nSELECT input.attempt_id,input.incident_id,input.request_id,COALESCE((SELECT state FROM moved),'STATE_GUARD_REJECTED') AS state,COALESCE((SELECT state FROM moved)='RECOVERED',false) AS recovered,(SELECT check_count FROM check_summary) AS checks_persisted,COALESCE((SELECT all_passed FROM check_summary),false) AS all_checks_passed FROM input;",
+        "options": {
+          "queryReplacement": "={{ [$json.attempt_id, $json.incident_id, $json.request_id, $json.target_version, JSON.stringify($json.checks)] }}"
+        }
+      },
+      "id": "07d1b163-75c2-4d3b-8499-59e20986378f",
+      "name": "Persist Checks and Recovery State",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [1480, -40],
+      "credentials": {
+        "postgres": {
+          "id": "dJp5v4e6qmyffUpN",
+          "name": "RelayCart Phase 2 Postgres"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Verification Request": {"main": [[{"node": "Load Executed Rollback", "type": "main", "index": 0}]]},
+    "Load Executed Rollback": {"main": [[{"node": "Attempt Eligible?", "type": "main", "index": 0}]]},
+    "Attempt Eligible?": {"main": [[{"node": "Read Back Active Version", "type": "main", "index": 0}], [{"node": "Reject Unbound Verification", "type": "main", "index": 0}]]},
+    "Read Back Active Version": {"main": [[{"node": "Check Service Health", "type": "main", "index": 0}]]},
+    "Check Service Health": {"main": [[{"node": "Run Synthetic Checkout", "type": "main", "index": 0}]]},
+    "Run Synthetic Checkout": {"main": [[{"node": "Prepare Verification Checks", "type": "main", "index": 0}]]},
+    "Prepare Verification Checks": {"main": [[{"node": "Order Was Created?", "type": "main", "index": 0}]]},
+    "Order Was Created?": {"main": [[{"node": "Read Back Created Order", "type": "main", "index": 0}], [{"node": "Record Missing Order Readback", "type": "main", "index": 0}]]},
+    "Read Back Created Order": {"main": [[{"node": "Evaluate All Recovery Conditions", "type": "main", "index": 0}]]},
+    "Evaluate All Recovery Conditions": {"main": [[{"node": "Final Version Read-Back", "type": "main", "index": 0}]]},
+    "Record Missing Order Readback": {"main": [[{"node": "Final Version Read-Back", "type": "main", "index": 0}]]},
+    "Final Version Read-Back": {"main": [[{"node": "Finalize Recovery Evidence", "type": "main", "index": 0}]]},
+    "Finalize Recovery Evidence": {"main": [[{"node": "Persist Checks and Recovery State", "type": "main", "index": 0}] ]}
+  },
+  "settings": {"executionOrder": "v1", "timezone": "UTC", "saveExecutionProgress": true, "saveManualExecutions": true},
+  "active": false
+}

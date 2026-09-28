@@ -6,11 +6,14 @@ from datetime import datetime, timedelta, timezone
 
 from psycopg.types.json import Jsonb
 
-from .db import get_connection
+from .db import get_connection, reset_incident_workflow_state
 
 ANCHOR = datetime(2026, 9, 28, 0, 0, tzinfo=timezone.utc)
 CURRENT_VERSION = "v1.8.1"
 BAD_VERSION = "v1.8.2"
+NEUTRAL_VERSION = "v1.8.3"
+HEALTHY_VERSIONS = frozenset({CURRENT_VERSION, NEUTRAL_VERSION})
+DEPLOYABLE_VERSIONS = HEALTHY_VERSIONS | {BAD_VERSION}
 SERVICE_NAME = "checkout-api"
 
 FIRST_NAMES = [
@@ -157,6 +160,10 @@ def seed_baseline() -> None:
             (Jsonb({"currency_rules": {"USD": "2-decimal"}, "schema_version": 1}), ANCHOR),
         )
         conn.execute(
+            "INSERT INTO config(config_key,value,updated_at) VALUES ('demo_checkout_fault',%s,%s)",
+            (Jsonb({"enabled": False}), ANCHOR),
+        )
+        conn.execute(
             "INSERT INTO application_events(level,event_type,service,message,details,created_at) "
             "VALUES ('INFO','demo.initialized','RelayCart','Demo baseline initialized',%s,%s)",
             (Jsonb({"customers": 30, "subscriptions": 30, "checkout_subscriptions": 18}), ANCHOR),
@@ -166,6 +173,8 @@ def seed_baseline() -> None:
 def reset_demo() -> None:
     """Remove demo activity and restore the seeded baseline and healthy version."""
     with get_connection() as conn:
+        reset_incident_workflow_state(conn)
+        conn.execute("TRUNCATE rollback_requests")
         conn.execute("TRUNCATE orders RESTART IDENTITY")
         conn.execute("TRUNCATE application_events RESTART IDENTITY")
         conn.execute("TRUNCATE deployments, health_failure_observations RESTART IDENTITY")
@@ -186,6 +195,11 @@ def reset_demo() -> None:
                 (version, outcome, deployed, "Release validation" if outcome == "succeeded" else "Rollback or limited signal recorded", service_key),
             )
         conn.execute("UPDATE config SET value=%s, updated_at=%s WHERE config_key='checkout'", (Jsonb({"currency_rules": {"USD": "2-decimal"}, "schema_version": 1}), ANCHOR))
+        conn.execute(
+            "INSERT INTO config(config_key,value,updated_at) VALUES ('demo_checkout_fault',%s,%s) "
+            "ON CONFLICT (config_key) DO UPDATE SET value=EXCLUDED.value,updated_at=EXCLUDED.updated_at",
+            (Jsonb({"enabled": False}), ANCHOR),
+        )
         conn.execute(
             "INSERT INTO application_events(level,event_type,service,message,details,created_at) "
             "VALUES ('INFO','demo.initialized','RelayCart','Demo baseline initialized',%s,%s)",

@@ -1,0 +1,375 @@
+{
+  "name": "IR 04 - Human Approval and Remediation",
+  "nodes": [
+    {
+      "parameters": {"httpMethod": "GET", "path": "phase2/approval/pending", "responseMode": "responseNode", "options": {"allowedOrigins": "http://127.0.0.1:8001"}},
+      "id": "f2a016b0-388f-4a97-bf40-40a160068c0f",
+      "name": "Read Pending Approval Page",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-1200, -420],
+      "webhookId": "ir-phase2-approval-page"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT a.approval_id,a.proposal_id,a.proposal_revision,a.action_type,a.source_version,a.target_version,\n       a.delivery_token::text AS token,a.expires_at,p.reason,p.evidence_refs,i.incident_id,i.service,\n       i.environment,i.severity,i.current_version,i.state\nFROM ir_approvals a\nJOIN ir_proposals p ON p.proposal_id=a.proposal_id\nJOIN ir_incidents i ON i.incident_id=p.incident_id\nWHERE a.status='PENDING' AND p.status='PROPOSED' AND p.action_type='rollback'\n  AND i.state='WAITING_FOR_APPROVAL' AND a.expires_at>NOW()\nORDER BY a.created_at;",
+        "options": {}
+      },
+      "alwaysOutputData": true,
+      "id": "e06ca435-d7dc-43de-9ce2-fc152496f09e",
+      "name": "List Current Pending Proposals",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [-960, -420],
+      "credentials": {"postgres": {"id": "dJp5v4e6qmyffUpN", "name": "RelayCart Phase 2 Postgres"}}
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const esc=(v)=>String(v??'').replace(/[&<>\\\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\\\"':'&quot;',\"'\":'&#39;'}[c])); const rows=$input.all().map(x=>x.json).filter(x=>x.approval_id); const cards=rows.length?rows.map(r=>`<article><h2>${esc(r.incident_id)} · ${esc(r.severity)}</h2><dl><dt>Service / environment</dt><dd>${esc(r.service)} / ${esc(r.environment)}</dd><dt>Current release</dt><dd>${esc(r.current_version)}</dd><dt>Proposed action</dt><dd>${esc(r.action_type)} ${esc(r.source_version)} → ${esc(r.target_version)}</dd><dt>Reason</dt><dd>${esc(r.reason)}</dd><dt>Evidence references</dt><dd>${esc(Array.isArray(r.evidence_refs)?r.evidence_refs.join(', '):r.evidence_refs)}</dd><dt>Expires</dt><dd>${esc(new Date(r.expires_at).toISOString())}</dd></dl><form class=decision><input type=hidden name=approval_id value=\"${esc(r.approval_id)}\"><input type=hidden name=proposal_id value=\"${esc(r.proposal_id)}\"><input type=hidden name=proposal_revision value=\"${esc(r.proposal_revision)}\"><input type=hidden name=action_type value=\"${esc(r.action_type)}\"><input type=hidden name=source_version value=\"${esc(r.source_version)}\"><input type=hidden name=target_version value=\"${esc(r.target_version)}\"><input type=hidden name=token value=\"${esc(r.token)}\"><button type=button data-decision=approve>Approve exact rollback</button><button type=button data-decision=reject>Reject</button></form><p class=result aria-live=polite></p></article>`).join(''):'<p>No current approvals are waiting.</p>'; const html=`<!doctype html><html><head><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\"><title>RelayCart approvals</title><style>body{font:16px system-ui;max-width:850px;margin:3rem auto;padding:0 1rem;background:#f5f7fb;color:#15243b}article{background:white;border:1px solid #d8e0ed;border-radius:12px;padding:1.25rem;margin:1rem 0}dl{display:grid;grid-template-columns:190px 1fr;gap:.6rem}dt{font-weight:650}dd{margin:0;overflow-wrap:anywhere}button{padding:.7rem 1rem;margin-right:.5rem;cursor:pointer}button[data-decision=approve]{background:#126b53;color:white;border:0;border-radius:6px}button[data-decision=reject]{background:#fff;color:#8d2c35;border:1px solid #ba7b80;border-radius:6px}.result{min-height:1.3em}</style></head><body><h1>RelayCart incident approvals</h1><p>Review the exact release change and evidence before choosing. Opening or refreshing this page never approves an action. This local demo has no production identity system.</p>${cards}<script>document.querySelectorAll('form.decision button').forEach(button=>button.addEventListener('click',async()=>{const form=button.closest('form');if(form.dataset.submitting)return;form.dataset.submitting='1';const result=form.nextElementSibling;form.querySelectorAll('button').forEach(b=>b.disabled=true);const payload=Object.fromEntries(new FormData(form));payload.proposal_revision=Number(payload.proposal_revision);payload.decision=button.dataset.decision;try{const response=await fetch('/webhook/phase2/approval/decision',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const body=await response.json();result.textContent=body.message||body.status||'Request completed.';if(response.ok){form.remove()}else{form.dataset.submitting='';form.querySelectorAll('button').forEach(b=>b.disabled=false)}}catch{result.textContent='Decision request failed. Reload to check the current approval state.';form.dataset.submitting='';form.querySelectorAll('button').forEach(b=>b.disabled=false)}}));</script></body></html>`; return {json:{html}};"
+      },
+      "id": "2329abfa-34e2-492f-8adf-d4d037aa84c8",
+      "name": "Render Read-Only Approval Form",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-700, -420]
+    },
+    {
+      "parameters": {"respondWith": "text", "responseBody": "={{ $json.html }}", "options": {"responseCode": 200, "responseHeaders": {"entries": [{"name": "Content-Type", "value": "text/html; charset=utf-8"}, {"name": "Cache-Control", "value": "no-store"}]}}},
+      "id": "da99b712-3b8f-49ba-b812-9e399bd53ec7",
+      "name": "Serve Approval Page",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [-440, -420]
+    },
+    {
+      "parameters": {"httpMethod": "POST", "path": "phase2/approval/decision", "responseMode": "responseNode", "options": {}},
+      "id": "7bb2d86f-9632-4e03-b611-934c1a9e0205",
+      "name": "Submit Explicit Approval Decision",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-1200, 40],
+      "webhookId": "ir-phase2-approval-decision"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const raw=$json.body??$json; const b=typeof raw==='string'?(()=>{try{return JSON.parse(raw)}catch{return {}}})():raw; const errors=[]; if(!b||typeof b!=='object'||Array.isArray(b)) errors.push('body must be an object'); const str=(k,max=240)=>typeof b?.[k]==='string'&&b[k].length>0&&b[k].length<=max; const healthyTargets=new Set(['v1.8.1','v1.8.3']); const supportedReleases=new Set(['v1.8.1','v1.8.2','v1.8.3']); if(!str('approval_id',80))errors.push('approval_id is invalid'); if(!str('proposal_id',80))errors.push('proposal_id is invalid'); if(!Number.isInteger(Number(b?.proposal_revision))||Number(b.proposal_revision)<1)errors.push('proposal_revision is invalid'); if(b?.action_type!=='rollback')errors.push('action_type is unsupported'); if(!str('source_version',80)||!supportedReleases.has(b.source_version)||!str('target_version',80)||!healthyTargets.has(b.target_version)||b.source_version===b.target_version)errors.push('release binding is unsupported'); if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(b?.token||'')))errors.push('approval token is invalid'); if(!['approve','reject'].includes(b?.decision))errors.push('decision must be approve or reject'); return {json:{valid:errors.length===0,errors,approval:{approval_id:b?.approval_id,proposal_id:b?.proposal_id,proposal_revision:Number(b?.proposal_revision),action_type:b?.action_type,source_version:b?.source_version,target_version:b?.target_version,token:b?.token,decision:b?.decision}}};"
+      },
+      "id": "5ad9ab6a-dfa8-429e-9903-77aef4b6175d",
+      "name": "Validate Exact Approval Binding",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-960, 40]
+    },
+    {
+      "parameters": {"conditions": {"options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2}, "conditions": [{"id": "valid", "leftValue": "={{ $json.valid }}", "rightValue": true, "operator": {"type": "boolean", "operation": "equals"}}], "combinator": "and"}, "options": {}},
+      "id": "b12a07ed-32f2-4497-83df-37ba1b132ac3",
+      "name": "Decision Shape Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-720, 40]
+    },
+    {
+      "parameters": {"mode": "runOnceForEachItem", "jsCode": "return {json:{status:'invalid',message:'Decision request is invalid.',errors:$json.errors||[]}};"},
+      "id": "28145a47-26d8-4202-9694-fbf95b431489",
+      "name": "Build Invalid Decision Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-480, 300]
+    },
+    {
+      "parameters": {"respondWith": "json", "responseBody": "={{ $json }}", "options": {"responseCode": 400}},
+      "id": "6c1a777d-dfae-44e9-8ff1-509f2594e8e6",
+      "name": "Return Invalid Decision",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [-240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH request AS (SELECT $1::text approval_id,$2::text proposal_id,$3::integer proposal_revision,$4::text action_type,$5::text source_version,$6::text target_version,$7::uuid delivery_token,$8::text decision),\nexpired AS (UPDATE ir_approvals a SET status='EXPIRED',decision='reject',decided_at=NOW(),consumed_at=NOW() FROM request r,ir_proposals p,ir_incidents i WHERE a.approval_id=r.approval_id AND a.proposal_id=r.proposal_id AND a.delivery_token=r.delivery_token AND a.token_hash=encode(digest(r.delivery_token::text,'sha256'),'hex') AND a.status='PENDING' AND a.expires_at<=NOW() AND a.proposal_revision=r.proposal_revision AND a.action_type=r.action_type AND a.source_version=r.source_version AND a.target_version=r.target_version AND p.proposal_id=a.proposal_id AND p.revision=a.proposal_revision AND p.status='PROPOSED' AND i.incident_id=p.incident_id AND i.state='WAITING_FOR_APPROVAL' AND i.revision=p.revision RETURNING a.approval_id,a.proposal_id,p.incident_id),\nexpired_proposal AS (UPDATE ir_proposals p SET status='EXPIRED' FROM expired e WHERE p.proposal_id=e.proposal_id RETURNING p.proposal_id),\nexpired_incident AS (UPDATE ir_incidents i SET state='NEEDS_ATTENTION',updated_at=NOW(),summary='Approval expired before a human decision.' FROM expired e WHERE i.incident_id=e.incident_id RETURNING i.incident_id),\nconsumed AS (UPDATE ir_approvals a SET status=CASE WHEN r.decision='approve' THEN 'CONSUMED' ELSE 'REJECTED' END,decision=r.decision,decided_at=NOW(),consumed_at=NOW() FROM request r,ir_proposals p,ir_incidents i WHERE a.approval_id=r.approval_id AND a.proposal_id=r.proposal_id AND a.delivery_token=r.delivery_token AND a.token_hash=encode(digest(r.delivery_token::text,'sha256'),'hex') AND a.status='PENDING' AND a.expires_at>NOW() AND a.proposal_revision=r.proposal_revision AND a.action_type=r.action_type AND a.source_version=r.source_version AND a.target_version=r.target_version AND p.proposal_id=a.proposal_id AND p.revision=a.proposal_revision AND p.action_type=r.action_type AND p.source_version=r.source_version AND p.target_version=r.target_version AND p.status='PROPOSED' AND i.incident_id=p.incident_id AND i.state='WAITING_FOR_APPROVAL' AND i.revision=p.revision AND (r.decision='reject' OR (i.environment='production-demo' AND i.service='checkout-api' AND NOT EXISTS (SELECT 1 FROM ir_remediation_attempts prior WHERE prior.approval_id=a.approval_id))) RETURNING a.approval_id,a.proposal_id,p.incident_id,r.decision,r.proposal_revision,r.source_version,r.target_version),\nreserved AS (INSERT INTO ir_remediation_attempts(proposal_id,approval_id,request_id,source_version,target_version,result,error) SELECT c.proposal_id,c.approval_id,'ir-approval-'||c.approval_id||'-'||c.proposal_revision::text,c.source_version,c.target_version,'blocked',NULL FROM consumed c WHERE c.decision='approve' ON CONFLICT(request_id) DO NOTHING RETURNING attempt_id,proposal_id,approval_id,request_id),\nupdated_proposal AS (UPDATE ir_proposals p SET status=CASE WHEN c.decision='approve' THEN 'APPROVED' ELSE 'REJECTED' END FROM consumed c WHERE p.proposal_id=c.proposal_id AND (c.decision='reject' OR EXISTS(SELECT 1 FROM reserved)) RETURNING p.proposal_id),\nupdated_incident AS (UPDATE ir_incidents i SET state=CASE WHEN c.decision='approve' THEN 'REMEDIATING' ELSE 'NEEDS_ATTENTION' END,updated_at=NOW(),summary=CASE WHEN c.decision='approve' THEN 'Exact rollback proposal approved by a human; remediation outcome is pending.' ELSE 'Rollback proposal rejected by a human.' END FROM consumed c WHERE i.incident_id=c.incident_id AND (c.decision='reject' OR EXISTS(SELECT 1 FROM reserved)) RETURNING i.incident_id)\nSELECT CASE WHEN EXISTS(SELECT 1 FROM reserved) THEN 'approve' WHEN EXISTS(SELECT 1 FROM consumed WHERE decision='reject') THEN 'reject' WHEN EXISTS(SELECT 1 FROM expired) THEN 'expired' WHEN EXISTS(SELECT 1 FROM consumed) THEN 'reservation_failed' ELSE 'invalid_or_already_used' END AS result,COALESCE((SELECT approval_id FROM reserved),(SELECT approval_id FROM consumed)) AS approval_id,COALESCE((SELECT proposal_id FROM reserved),(SELECT proposal_id FROM consumed)) AS proposal_id,COALESCE((SELECT incident_id FROM consumed),(SELECT incident_id FROM expired)) AS incident_id,(SELECT attempt_id FROM reserved) AS attempt_id,(SELECT request_id FROM reserved) AS request_id;",
+        "options": {"queryReplacement": "={{ [$json.approval.approval_id,$json.approval.proposal_id,$json.approval.proposal_revision,$json.approval.action_type,$json.approval.source_version,$json.approval.target_version,$json.approval.token,$json.approval.decision] }}"}
+      },
+      "alwaysOutputData": true,
+      "id": "25f78dda-53b1-4935-9a93-cd9699c20f51",
+      "name": "Consume Matching Approval Once",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [-480, 0],
+      "credentials": {"postgres": {"id": "dJp5v4e6qmyffUpN", "name": "RelayCart Phase 2 Postgres"}}
+    },
+    {
+      "parameters": {"conditions": {"options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2}, "conditions": [{"id": "approve", "leftValue": "={{ $json.result }}", "rightValue": "approve", "operator": {"type": "string", "operation": "equals"}}], "combinator": "and"}, "options": {}},
+      "id": "66d6e7a7-28d1-42f4-a6a5-574a3a80d5aa",
+      "name": "Approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-240, 0]
+    },
+    {
+      "parameters": {"mode": "runOnceForEachItem", "jsCode": "const r=$json.result; const status=r==='reject'?'rejected':r==='expired'?'expired':'invalid_or_already_used'; return {json:{status,message:status==='rejected'?'Approval rejected; no rollback was performed.':status==='expired'?'Approval expired; no rollback was performed.':'Approval is invalid, stale, expired, or already used; no rollback was performed.'}};"},
+      "id": "9b7204a8-44eb-435d-a7c0-af96785e4c54",
+      "name": "Build Non-Approval Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [0, 180]
+    },
+    {
+      "parameters": {"respondWith": "json", "responseBody": "={{ $json }}", "options": {"responseCode": "={{ $json.status==='rejected'?200:$json.status==='expired'?410:409 }}"}},
+      "id": "6bc9c9a8-8e2c-495d-8a1b-8272a74e9b00",
+      "name": "Return Non-Approval Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [240, 180]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT a.approval_id,a.proposal_id,a.proposal_revision,a.source_version,a.target_version,\n       p.incident_id,ra.attempt_id,ra.request_id\nFROM ir_approvals a JOIN ir_proposals p ON p.proposal_id=a.proposal_id\nJOIN ir_incidents i ON i.incident_id=p.incident_id AND i.revision=p.revision\nJOIN ir_remediation_attempts ra ON ra.approval_id=a.approval_id AND ra.proposal_id=p.proposal_id\n AND ra.request_id='ir-approval-'||a.approval_id||'-'||a.proposal_revision::text\nWHERE a.approval_id=$1 AND a.proposal_id=$2 AND a.status='CONSUMED' AND a.decision='approve'\n  AND ra.result='blocked' AND ra.completed_at IS NULL AND p.status='APPROVED' AND i.state='REMEDIATING'\n  AND i.environment='production-demo' AND i.service='checkout-api';",
+        "options": {"queryReplacement": "={{ [$json.approval_id,$json.proposal_id] }}"}
+      },
+      "id": "8bdc83db-e301-42c7-a15e-5621c7d6fcf3",
+      "name": "Bind Approved Rollback Request",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [0, -180],
+      "credentials": {"postgres": {"id": "dJp5v4e6qmyffUpN", "name": "RelayCart Phase 2 Postgres"}}
+    },
+    {
+      "parameters": {"url": "http://relaycart-api:8000/version", "options": {"timeout": 5000, "response": {"response": {"fullResponse": true, "neverError": true, "responseFormat": "json"}}}},
+      "id": "2b43a675-7ee2-4b79-a31d-1c65af3133e0",
+      "name": "Recheck Current Release Before Rollback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "onError": "continueRegularOutput",
+      "position": [240, -180]
+    },
+    {
+      "parameters": {"mode": "runOnceForEachItem", "jsCode": "const r=$('Bind Approved Rollback Request').first().json; const response=$json||{}; const body=response.body&&typeof response.body==='object'?response.body:{}; const current=body.version||'unknown'; const currentValid=Number(response.statusCode)===200&&typeof body.version==='string'; return {json:{...r,current_version:current,stale:currentValid&&current!==r.source_version,precheck_unavailable:!currentValid,precheck_status:Number(response.statusCode||0)}};"},
+      "id": "7ffb8dc2-c53f-46dc-8eb4-7fe22732b064",
+      "name": "Compare Actual Release With Approval",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, -180]
+    },
+    {
+      "parameters": {"conditions": {"options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2}, "conditions": [{"id": "stale", "leftValue": "={{ $json.stale }}", "rightValue": true, "operator": {"type": "boolean", "operation": "equals"}}], "combinator": "and"}, "options": {}},
+      "id": "34d060d7-0a12-4553-87ad-2e2ac9b0d9f8",
+      "name": "Approval Source Still Current?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [720, -180]
+    },
+    {
+      "parameters": {"conditions": {"options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2}, "conditions": [{"id": "available", "leftValue": "={{ $json.precheck_unavailable }}", "rightValue": false, "operator": {"type": "boolean", "operation": "equals"}}], "combinator": "and"}, "options": {}},
+      "id": "ed645afe-df06-46ba-a99e-d79f0bf3d919",
+      "name": "Release Read-Back Available?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [960, -300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH request AS (SELECT $1::text approval_id,$2::text proposal_id,$3::text request_id,$4::text source_version,$5::text target_version,$6::text observed_version),\nattempt AS (UPDATE ir_remediation_attempts a SET result='stale',observed_version=r.observed_version,error='Approved source release is no longer current.',completed_at=NOW() FROM request r WHERE a.request_id=r.request_id AND a.approval_id=r.approval_id AND a.proposal_id=r.proposal_id AND a.result='blocked' AND a.completed_at IS NULL RETURNING a.attempt_id,a.proposal_id),\nchanged AS (UPDATE ir_proposals p SET status='STALE' FROM attempt a WHERE p.proposal_id=a.proposal_id AND p.status='APPROVED' RETURNING p.incident_id,a.attempt_id),\nmoved AS (UPDATE ir_incidents i SET state='NEEDS_ATTENTION',updated_at=NOW(),summary='REMEDIATION BLOCKED: production changed after the approval proposal.' FROM changed c WHERE i.incident_id=c.incident_id AND i.state='REMEDIATING' RETURNING i.incident_id,c.attempt_id)\nSELECT a.attempt_id,(SELECT incident_id FROM moved) AS incident_id,(SELECT source_version FROM request) AS approved_source,(SELECT observed_version FROM request) AS current_version,CASE WHEN (SELECT count(*) FROM moved)=1 THEN 'stale_approval_blocked' ELSE 'state_guard_rejected' END AS result FROM attempt a;",
+        "options": {"queryReplacement": "={{ [$json.approval_id,$json.proposal_id,$json.request_id,$json.source_version,$json.target_version,$json.current_version] }}"}
+      },
+      "alwaysOutputData": true,
+      "id": "7c30c240-2540-4ee8-88ca-22b79e7995d2",
+      "name": "Record Stale Approval Block",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [960, -40],
+      "credentials": {"postgres": {"id": "dJp5v4e6qmyffUpN", "name": "RelayCart Phase 2 Postgres"}}
+    },
+    {
+      "parameters": {"mode": "runOnceForEachItem", "jsCode": "return {json:{status:$json.result,message:'REMEDIATION BLOCKED: the approved source release is no longer current. No rollback was sent.',approved_source_version:$json.approved_source,current_version:$json.current_version,reason:$json.result==='state_guard_rejected'?'incident or proposal state changed':'production changed after the proposal'}};"},
+      "id": "2f84fbba-c918-4dd6-ad29-f4c62d8e676c",
+      "name": "Build Stale Approval Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, -40]
+    },
+    {
+      "parameters": {"respondWith": "json", "responseBody": "={{ $json }}", "options": {"responseCode": 409}},
+      "id": "1eec4e10-30a3-454c-b5f5-b8070437eafb",
+      "name": "Return Stale Approval Block",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [1440, -40]
+    },
+    {
+      "parameters": {"operation": "executeQuery", "query": "WITH request AS (SELECT $1::text approval_id,$2::text proposal_id,$3::text request_id,$4::text source_version,$5::text target_version,$6::integer http_status),\nattempt AS (UPDATE ir_remediation_attempts a SET result='blocked',http_status=r.http_status,error='Could not verify current release before rollback; no rollback was sent.',completed_at=NOW() FROM request r WHERE a.request_id=r.request_id AND a.approval_id=r.approval_id AND a.proposal_id=r.proposal_id AND a.result='blocked' AND a.completed_at IS NULL RETURNING a.attempt_id,a.proposal_id),\nproposal AS (UPDATE ir_proposals p SET status='CANCELLED' FROM attempt a WHERE p.proposal_id=a.proposal_id AND p.status='APPROVED' RETURNING p.incident_id,a.attempt_id),\nincident AS (UPDATE ir_incidents i SET state='NEEDS_ATTENTION',updated_at=NOW(),summary='Rollback was blocked because the current release could not be verified.' FROM proposal p WHERE i.incident_id=p.incident_id AND i.state='REMEDIATING' RETURNING i.incident_id,i.state,p.attempt_id)\nSELECT a.attempt_id,COALESCE(i.incident_id,(SELECT p.incident_id FROM ir_proposals p WHERE p.proposal_id=a.proposal_id)) AS incident_id,COALESCE(i.state,'NEEDS_ATTENTION') AS incident_state FROM attempt a LEFT JOIN incident i ON i.attempt_id=a.attempt_id;", "options": {"queryReplacement": "={{ [$json.approval_id,$json.proposal_id,$json.request_id,$json.source_version,$json.target_version,$json.precheck_status] }}"}},
+      "alwaysOutputData": true,
+      "id": "3354932d-9520-4d0c-a3ac-cc960604177a",
+      "name": "Record Unavailable Release Read-Back",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [1200, 120],
+      "credentials": {"postgres": {"id": "dJp5v4e6qmyffUpN", "name": "RelayCart Phase 2 Postgres"}}
+    },
+    {
+      "parameters": {"mode": "runOnceForEachItem", "jsCode": "return {json:{status:'precheck_unavailable',message:'Rollback blocked because the current release could not be verified. No rollback was sent.',attempt_id:$json.attempt_id,incident_id:$json.incident_id}};"},
+      "id": "62e01167-433c-4fc3-9dc1-431ad5f4b529",
+      "name": "Build Pre-Check Failure Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1440, 120]
+    },
+    {
+      "parameters": {"respondWith": "json", "responseBody": "={{ $json }}", "options": {"responseCode": 503}},
+      "id": "aeb443ba-8932-4544-a6bb-7def19cffeb8",
+      "name": "Return Pre-Check Failure",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [1680, 120]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://relaycart-api:8000/rollback",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ {expected_source_version:$json.source_version,target_version:$json.target_version,request_id:$json.request_id} }}",
+        "options": {"timeout": 8000, "response": {"response": {"fullResponse": true, "neverError": true, "responseFormat": "json"}}}
+      },
+      "id": "ded7b29f-8ab3-41c9-807e-d08f3058b13f",
+      "name": "Call Version-Bound RelayCart Rollback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "onError": "continueRegularOutput",
+      "position": [960, -300]
+    },
+    {
+      "parameters": {"mode": "runOnceForEachItem", "jsCode": "const req=$('Compare Actual Release With Approval').first().json; const res=$json||{}; const body=res.body&&typeof res.body==='object'?res.body:{}; const http=Number(res.statusCode||0); const succeeded=http===200&&body.outcome==='succeeded'&&body.source_version===req.source_version&&body.target_version===req.target_version&&body.request_id===req.request_id&&body.version===req.target_version; const stale=http===409&&body.detail?.code==='stale_source_version'; const result=succeeded?'succeeded':stale?'stale':'failed'; return {json:{...req,http_status:http,result,observed_version:succeeded?body.version:stale?(body.detail?.current_version||req.current_version):req.current_version,error:result==='succeeded'?null:stale?'RelayCart rejected a stale source version.':'Rollback request did not return the exact expected result.'}};"},
+      "id": "5a9018e0-4386-4dac-a2f8-cdf357e18a03",
+      "name": "Validate Rollback Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1200, -300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH request AS (SELECT $1::text approval_id,$2::text proposal_id,$3::text request_id,$4::text source_version,$5::text target_version,$6::text result,$7::integer http_status,$8::text observed_version,$9::text error),\nattempt AS (UPDATE ir_remediation_attempts a SET result=r.result,http_status=r.http_status,observed_version=r.observed_version,response=jsonb_build_object('outcome',r.result,'http_status',r.http_status,'source_version',r.source_version,'target_version',r.target_version,'observed_version',r.observed_version),error=r.error,completed_at=NOW() FROM request r WHERE a.request_id=r.request_id AND a.approval_id=r.approval_id AND a.proposal_id=r.proposal_id AND a.result='blocked' AND a.completed_at IS NULL RETURNING a.attempt_id,a.proposal_id,a.result),\nproposal AS (UPDATE ir_proposals p SET status=CASE WHEN a.result='succeeded' THEN 'EXECUTED' WHEN a.result='stale' THEN 'STALE' ELSE 'CANCELLED' END FROM attempt a WHERE p.proposal_id=a.proposal_id AND p.status='APPROVED' RETURNING p.incident_id,a.attempt_id,a.result),\nincident AS (UPDATE ir_incidents i SET state=CASE WHEN p.result='succeeded' THEN 'VERIFYING' ELSE 'NEEDS_ATTENTION' END,updated_at=NOW(),summary=CASE WHEN p.result='succeeded' THEN 'Rollback returned success; business recovery verification is pending.' WHEN p.result='stale' THEN 'REMEDIATION BLOCKED: production changed before rollback completed.' ELSE 'Rollback call did not complete successfully; incident needs attention.' END FROM proposal p WHERE i.incident_id=p.incident_id AND i.state='REMEDIATING' RETURNING i.incident_id,i.state,p.attempt_id,p.result)\nSELECT a.attempt_id,a.result,COALESCE(i.state,(SELECT ci.state FROM ir_proposals cp JOIN ir_incidents ci ON ci.incident_id=cp.incident_id WHERE cp.proposal_id=a.proposal_id),'STATE_GUARD_REJECTED') AS incident_state,a.proposal_id FROM attempt a LEFT JOIN incident i ON i.attempt_id=a.attempt_id;",
+        "options": {"queryReplacement": "={{ [$json.approval_id,$json.proposal_id,$json.request_id,$json.source_version,$json.target_version,$json.result,$json.http_status,$json.observed_version,$json.error] }}"}
+      },
+      "alwaysOutputData": true,
+      "id": "eb9ec71a-f216-468c-b2ba-fbac488448c4",
+      "name": "Persist Attempt and State Transition",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [1440, -300],
+      "credentials": {"postgres": {"id": "dJp5v4e6qmyffUpN", "name": "RelayCart Phase 2 Postgres"}}
+    },
+    {
+      "parameters": {"conditions": {"options": {"caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 2}, "conditions": [{"id": "succeeded", "leftValue": "={{ $json.result }}", "rightValue": "succeeded", "operator": {"type": "string", "operation": "equals"}}], "combinator": "and"}, "options": {}},
+      "id": "587c0aef-d4a9-42d6-aa64-3071638b9f3e",
+      "name": "Rollback Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1680, -300]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {"__rl": true, "value": "2jX0JueG8G7HYrot", "mode": "list", "cachedResultName": "IR 05 - Recovery Verification"},
+        "workflowInputs": {"mappingMode": "defineBelow", "value": {"attempt_id": "={{ Number($json.attempt_id) }}"}, "matchingColumns": [], "schema": [{"id": "attempt_id", "displayName": "attempt_id", "required": true, "defaultMatch": false, "display": true, "canBeUsedToMatch": true, "type": "number", "removed": false}], "attemptToConvertTypes": true, "convertFieldsToString": false},
+        "options": {"waitForSubWorkflow": true}
+      },
+      "id": "1a6c689c-b848-4cf8-b438-b2a2fa3ec568",
+      "name": "Run Recovery Verification Workflow",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [1920, -400]
+    },
+    {
+      "parameters": {"mode": "runOnceForEachItem", "jsCode": "const r=$json; return {json:{status:r.incident_state==='VERIFYING'?'rollback_succeeded_verification_pending':r.incident_state==='STATE_GUARD_REJECTED'?'state_guard_rejected':r.result,message:r.incident_state==='VERIFYING'?'Rollback succeeded; recovery verification is running.':r.result==='stale'?'REMEDIATION BLOCKED: production changed after approval; no stale rollback occurred.':'Rollback failed; incident needs attention.',attempt_id:r.attempt_id,incident_id:r.incident_id||null}};"},
+      "id": "b587af81-fc48-42d0-8a7a-e8f91cbdf757",
+      "name": "Build Remediation Failure Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1920, -160]
+    },
+    {
+      "parameters": {"respondWith": "json", "responseBody": "={{ $json }}", "options": {"responseCode": "={{ $json.status==='rollback_succeeded_verification_pending'?200:$json.status==='stale'?409:502 }}"}},
+      "id": "22cdfcba-eefe-4402-8c55-f4222585f24e",
+      "name": "Return Remediation Failure",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [2160, -160]
+    },
+    {
+      "parameters": {"mode": "runOnceForEachItem", "jsCode": "const r=$json; return {json:{status:'verification_complete',message:'Rollback response was followed by persisted recovery checks.',attempt_id:r.attempt_id,checks_persisted:r.checks_persisted,recovered:r.state==='RECOVERED',incident_state:r.state}};"},
+      "id": "8d7bbbc5-e521-45eb-a8bc-e7cf954945e9",
+      "name": "Build Verification Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2160, -400]
+    },
+    {
+      "parameters": {"respondWith": "json", "responseBody": "={{ $json }}", "options": {"responseCode": "={{ $json.incident_state==='RECOVERED'?200:202 }}"}},
+      "id": "2ad9207c-10a4-4bce-a4dc-0bd4334fbefb",
+      "name": "Return Verification Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [2400, -400]
+    },
+    {
+      "parameters": {"rule": {"interval": [{"field": "seconds", "secondsInterval": 60}]}},
+      "id": "0e14974e-d263-49c2-9ea8-6d0afac4ef1d",
+      "name": "Approval Expiry Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-1200, 560]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH expired AS (UPDATE ir_approvals a SET status='EXPIRED',decision='reject',decided_at=NOW(),consumed_at=NOW() FROM ir_proposals p JOIN ir_incidents i ON i.incident_id=p.incident_id WHERE a.proposal_id=p.proposal_id AND a.status='PENDING' AND a.expires_at<=NOW() AND p.status='PROPOSED' AND i.state='WAITING_FOR_APPROVAL' AND i.revision=p.revision RETURNING a.approval_id,p.proposal_id,p.incident_id),\nexpired_proposals AS (UPDATE ir_proposals p SET status='EXPIRED' FROM expired e WHERE p.proposal_id=e.proposal_id RETURNING p.proposal_id),\nexpired_incidents AS (UPDATE ir_incidents i SET state='NEEDS_ATTENTION',updated_at=NOW(),summary='Approval expired without a human decision.' FROM expired e WHERE i.incident_id=e.incident_id RETURNING i.incident_id),\nstranded AS (UPDATE ir_remediation_attempts a SET result='blocked',error='n8n did not finalize the rollback response; reconcile current release before proposing another action.',completed_at=NOW() WHERE a.result='blocked' AND a.completed_at IS NULL AND a.started_at<NOW()-interval '2 minutes' RETURNING a.proposal_id,a.attempt_id),\nstranded_proposals AS (UPDATE ir_proposals p SET status='CANCELLED' FROM stranded s WHERE p.proposal_id=s.proposal_id AND p.status='APPROVED' RETURNING p.incident_id,s.attempt_id),\nstranded_incidents AS (UPDATE ir_incidents i SET state='NEEDS_ATTENTION',updated_at=NOW(),summary='Remediation outcome needs reconciliation; n8n did not record a terminal result.' FROM stranded_proposals s WHERE i.incident_id=s.incident_id AND i.state='REMEDIATING' RETURNING i.incident_id)\nSELECT (SELECT count(*) FROM expired) AS expired_approvals,(SELECT count(*) FROM expired_proposals) AS proposals_updated,(SELECT count(*) FROM expired_incidents) AS incidents_escalated,(SELECT count(*) FROM stranded) AS stranded_attempts,(SELECT count(*) FROM stranded_incidents) AS stranded_incidents_escalated;",
+        "options": {}
+      },
+      "id": "9fe54d18-bbfe-4b8b-b8d1-7b57905d4cde",
+      "name": "Expire Unanswered Approval Requests",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [-960, 560],
+      "credentials": {"postgres": {"id": "dJp5v4e6qmyffUpN", "name": "RelayCart Phase 2 Postgres"}}
+    }
+  ],
+  "connections": {
+    "Read Pending Approval Page": {"main": [[{"node": "List Current Pending Proposals", "type": "main", "index": 0}]]},
+    "List Current Pending Proposals": {"main": [[{"node": "Render Read-Only Approval Form", "type": "main", "index": 0}]]},
+    "Render Read-Only Approval Form": {"main": [[{"node": "Serve Approval Page", "type": "main", "index": 0}]]},
+    "Submit Explicit Approval Decision": {"main": [[{"node": "Validate Exact Approval Binding", "type": "main", "index": 0}]]},
+    "Validate Exact Approval Binding": {"main": [[{"node": "Decision Shape Valid?", "type": "main", "index": 0}]]},
+    "Decision Shape Valid?": {"main": [[{"node": "Consume Matching Approval Once", "type": "main", "index": 0}], [{"node": "Build Invalid Decision Response", "type": "main", "index": 0}]]},
+    "Build Invalid Decision Response": {"main": [[{"node": "Return Invalid Decision", "type": "main", "index": 0}]]},
+    "Consume Matching Approval Once": {"main": [[{"node": "Approved?", "type": "main", "index": 0}]]},
+    "Approved?": {"main": [[{"node": "Bind Approved Rollback Request", "type": "main", "index": 0}], [{"node": "Build Non-Approval Result", "type": "main", "index": 0}]]},
+    "Build Non-Approval Result": {"main": [[{"node": "Return Non-Approval Result", "type": "main", "index": 0}]]},
+    "Bind Approved Rollback Request": {"main": [[{"node": "Recheck Current Release Before Rollback", "type": "main", "index": 0}]]},
+    "Recheck Current Release Before Rollback": {"main": [[{"node": "Compare Actual Release With Approval", "type": "main", "index": 0}]]},
+    "Compare Actual Release With Approval": {"main": [[{"node": "Approval Source Still Current?", "type": "main", "index": 0}]]},
+    "Approval Source Still Current?": {"main": [[{"node": "Record Stale Approval Block", "type": "main", "index": 0}], [{"node": "Release Read-Back Available?", "type": "main", "index": 0}]]},
+    "Release Read-Back Available?": {"main": [[{"node": "Call Version-Bound RelayCart Rollback", "type": "main", "index": 0}], [{"node": "Record Unavailable Release Read-Back", "type": "main", "index": 0}]]},
+    "Record Unavailable Release Read-Back": {"main": [[{"node": "Build Pre-Check Failure Response", "type": "main", "index": 0}]]},
+    "Build Pre-Check Failure Response": {"main": [[{"node": "Return Pre-Check Failure", "type": "main", "index": 0}]]},
+    "Record Stale Approval Block": {"main": [[{"node": "Build Stale Approval Response", "type": "main", "index": 0}]]},
+    "Build Stale Approval Response": {"main": [[{"node": "Return Stale Approval Block", "type": "main", "index": 0}]]},
+    "Call Version-Bound RelayCart Rollback": {"main": [[{"node": "Validate Rollback Result", "type": "main", "index": 0}]]},
+    "Validate Rollback Result": {"main": [[{"node": "Persist Attempt and State Transition", "type": "main", "index": 0}]]},
+    "Persist Attempt and State Transition": {"main": [[{"node": "Rollback Succeeded?", "type": "main", "index": 0}]]},
+    "Rollback Succeeded?": {"main": [[{"node": "Run Recovery Verification Workflow", "type": "main", "index": 0}], [{"node": "Build Remediation Failure Response", "type": "main", "index": 0}]]},
+    "Build Remediation Failure Response": {"main": [[{"node": "Return Remediation Failure", "type": "main", "index": 0}]]},
+    "Run Recovery Verification Workflow": {"main": [[{"node": "Build Verification Result", "type": "main", "index": 0}]]},
+    "Build Verification Result": {"main": [[{"node": "Return Verification Result", "type": "main", "index": 0}]]},
+    "Approval Expiry Schedule": {"main": [[{"node": "Expire Unanswered Approval Requests", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1", "timezone": "UTC", "saveExecutionProgress": true, "saveManualExecutions": true},
+  "active": false
+}

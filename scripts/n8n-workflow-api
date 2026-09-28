@@ -1,0 +1,148 @@
+#!/usr/bin/env python3
+"""Use an existing n8n SQLite API key in memory for workflow API operations.
+
+The key is read and used inside the n8n container; it never crosses the Docker
+exec boundary. Exported workflow JSON has credential references removed.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+
+NODE_CLIENT = r'''
+const fs = require("node:fs");
+const path = require("node:path");
+const pnpm = "/usr/local/lib/node_modules/n8n/node_modules/.pnpm";
+const sqlitePackage = fs.readdirSync(pnpm).find((name) => name.startsWith("sqlite3@"));
+if (!sqlitePackage) throw new Error("n8n SQLite driver unavailable");
+const sqlite3 = require(path.join(pnpm, sqlitePackage, "node_modules/sqlite3"));
+const input = JSON.parse(fs.readFileSync(0, "utf8"));
+const db = new sqlite3.Database("/home/node/.n8n/database.sqlite", sqlite3.OPEN_READONLY);
+function queryKeys() {
+  return new Promise((resolve, reject) => db.all("SELECT apiKey FROM user_api_keys", (err, rows) => err ? reject(err) : resolve(rows)));
+}
+async function findKey() {
+  const rows = await queryKeys();
+  for (const row of rows) {
+    try {
+      const response = await fetch("http://127.0.0.1:5678/api/v1/workflows?limit=1", {
+        headers: { "X-N8N-API-KEY": row.apiKey },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (response.ok) return row.apiKey;
+    } catch (_) {}
+  }
+  throw new Error("No usable stored n8n API key");
+}
+function sanitize(value) {
+  if (Array.isArray(value)) return value.map(sanitize);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value)
+      .filter(([key]) => !/^(credentials?|credentialIds?|auth)$/i.test(key))
+      .map(([key, child]) => [key, sanitize(child)]));
+  }
+  return value;
+}
+async function main() {
+  const key = await findKey();
+  const response = await fetch(`http://127.0.0.1:5678/api/v1${input.path}`, {
+    method: input.method,
+    headers: {
+      "X-N8N-API-KEY": key,
+      "Accept": "application/json",
+      ...(input.body === undefined ? {} : { "Content-Type": "application/json" }),
+    },
+    body: input.body === undefined ? undefined : JSON.stringify(input.body),
+    signal: AbortSignal.timeout(30000),
+  });
+  let body = null;
+  if (response.ok) {
+    try { body = await response.json(); } catch (_) { body = null; }
+  }
+  process.stdout.write(JSON.stringify({ status: response.status, body: sanitize(body) }));
+  if (!response.ok) process.exitCode = 1;
+}
+main().catch((error) => {
+  // Error text is intentionally generic: never echo keys or HTTP headers.
+  console.error(error.message === "No usable stored n8n API key" ? error.message : "n8n API client failed");
+  process.exitCode = 1;
+}).finally(() => db.close());
+'''
+
+
+def api(method: str, path: str, body: object | None = None) -> object:
+    request = {"method": method, "path": path}
+    if body is not None:
+        request["body"] = body
+    try:
+        result = subprocess.run(
+            ["docker", "exec", "-i", os.environ.get("N8N_CONTAINER", "n8n"), "node", "-e", NODE_CLIENT],
+            input=json.dumps(request).encode("utf-8"),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=40,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise SystemExit(f"n8n API client failed ({type(exc).__name__}).") from None
+    if result.returncode:
+        # Never forward child stderr: it could contain runtime details.
+        raise SystemExit("n8n API request failed; check the n8n container and API access.")
+    try:
+        envelope = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        raise SystemExit("n8n API client returned invalid output.") from None
+    return envelope.get("body")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="command", required=True)
+    sub.add_parser("list", help="list workflow IDs and names")
+    export_parser = sub.add_parser("export", help="export one sanitized workflow as JSON")
+    export_parser.add_argument("workflow_id")
+    export_parser.add_argument("--output", required=True, type=Path)
+    deploy_parser = sub.add_parser("deploy", help="create a workflow from JSON")
+    deploy_parser.add_argument("workflow_json", type=Path)
+    update_parser = sub.add_parser("update", help="update an explicitly selected workflow")
+    update_parser.add_argument("workflow_id")
+    update_parser.add_argument("workflow_json", type=Path)
+    args = parser.parse_args()
+
+    if args.command == "list":
+        result = api("GET", "/workflows?limit=250")
+        for workflow in (result or {}).get("data", []):
+            print(f"{workflow.get('id', '')}\t{workflow.get('name', '')}")
+        return 0
+
+    if args.command == "export":
+        result = api("GET", f"/workflows/{args.workflow_id}")
+        args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+        print(f"Exported sanitized workflow {args.workflow_id} to {args.output}")
+        return 0
+
+    try:
+        workflow = json.loads(args.workflow_json.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"Cannot read workflow JSON ({type(exc).__name__}).") from None
+    if not isinstance(workflow, dict) or not isinstance(workflow.get("name"), str):
+        raise SystemExit("Workflow JSON must be an object with a name.")
+    for field in ("id", "createdAt", "updatedAt", "versionId", "shared", "active"):
+        workflow.pop(field, None)
+    if args.command == "deploy":
+        result = api("POST", "/workflows", workflow)
+        print(f"Created workflow {result.get('id', 'unknown')}")
+    else:
+        api("PUT", f"/workflows/{args.workflow_id}", workflow)
+        print(f"Updated workflow {args.workflow_id}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

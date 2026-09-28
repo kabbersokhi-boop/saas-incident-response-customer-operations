@@ -14,6 +14,11 @@ services:
       retries: 10
       start_period: 5s
     restart: unless-stopped
+    networks:
+      default: {}
+      n8n:
+        aliases:
+          - relaycart-postgres
 
   api:
     build: .
@@ -32,6 +37,16 @@ services:
       retries: 2
       start_period: 10s
     restart: unless-stopped
+    networks:
+      default: {}
+      n8n:
+        aliases:
+          - relaycart-api
+
+networks:
+  n8n:
+    name: relaycart-n8n
+    driver: bridge
 
 volumes:
   relaycart-postgres:

@@ -66,10 +66,15 @@
           <div class="panel-heading deploy-heading"><div><h2>Deployment controls</h2><p>Exercise the release and recovery path against demo state.</p></div><span class="control-badge">CONTROL PLANE</span></div>
           <div class="deploy-body">
             <div class="release-card"><div class="release-icon">⇧</div><div class="release-copy"><span class="field-label">CURRENT RELEASE</span><strong id="current-version">—</strong><span class="release-caption" id="current-release-caption">Reported by service health</span></div><span class="release-status" id="release-status">—</span></div>
-            <div class="release-actions"><div class="action-group"><span class="field-label">DEPLOY RELEASE</span><div class="button-row"><button class="button button-secondary" id="deploy-182">Deploy v1.8.2 <span>↗</span></button><button class="button button-secondary" id="deploy-181">Deploy v1.8.1 <span>↗</span></button></div></div><div class="action-group rollback-group"><span class="field-label">RECOVERY</span><button class="button button-secondary" id="rollback-button">↶ &nbsp; Roll back release</button></div></div>
+            <div class="release-actions"><div class="action-group"><span class="field-label">DEPLOY RELEASE</span><div class="button-row"><button class="button button-secondary" id="deploy-183">Deploy v1.8.3 <span>↗</span></button><button class="button button-secondary" id="deploy-182">Deploy v1.8.2 <span>↗</span></button><button class="button button-secondary" id="deploy-181">Deploy v1.8.1 <span>↗</span></button></div></div><div class="action-group rollback-group"><span class="field-label">RECOVERY</span><button class="button button-secondary" id="rollback-button">↶ &nbsp; Roll back release</button></div></div>
           </div>
           <div class="operation-message hidden" id="operation-message" role="status" aria-live="polite"></div>
           <div class="deployment-list"><div class="list-heading"><h3>Recent deployments</h3><span id="deployment-count">From live state</span></div><div id="deployments-list" class="compact-list"><div class="empty-row">Loading deployment history…</div></div></div>
+        </section>
+
+        <section class="panel live-incident-panel" id="live-incident-panel">
+          <div class="panel-heading"><div><h2>Latest technical incident</h2><p>Read-only incident state maintained by n8n</p></div><span class="history-count" id="live-incident-state">Loading</span></div>
+          <div id="live-incident" class="live-incident-content"><div class="empty-row">Checking incident state…</div></div>
         </section>
 
         <section class="history-grid" id="history">

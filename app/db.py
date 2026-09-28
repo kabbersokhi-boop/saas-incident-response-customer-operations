@@ -98,6 +98,13 @@ CREATE TABLE IF NOT EXISTS health_failure_observations (
     deployment_id INTEGER PRIMARY KEY REFERENCES deployments(id) ON DELETE CASCADE,
     observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE TABLE IF NOT EXISTS rollback_requests (
+    request_id TEXT PRIMARY KEY,
+    source_version TEXT NOT NULL,
+    target_version TEXT NOT NULL,
+    response JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 CREATE TABLE IF NOT EXISTS historical_incidents (
     id SERIAL PRIMARY KEY,
     incident_key TEXT NOT NULL UNIQUE,
@@ -137,3 +144,35 @@ CREATE INDEX IF NOT EXISTS idx_deployments_deployed_at ON deployments(deployed_a
 def initialize_schema() -> None:
     with get_connection() as conn:
         conn.execute(SCHEMA)
+
+
+def incident_workflow_schema_available(conn: psycopg.Connection) -> bool:
+    """Return whether the complete optional n8n-owned schema is installed."""
+    return conn.execute(
+        "SELECT to_regclass('ir_events') IS NOT NULL "
+        "AND to_regclass('ir_incidents') IS NOT NULL "
+        "AND to_regclass('ir_incident_events') IS NOT NULL "
+        "AND to_regclass('ir_evidence') IS NOT NULL "
+        "AND to_regclass('ir_assessments') IS NOT NULL "
+        "AND to_regclass('ir_proposals') IS NOT NULL "
+        "AND to_regclass('ir_approvals') IS NOT NULL "
+        "AND to_regclass('ir_remediation_attempts') IS NOT NULL "
+        "AND to_regclass('ir_verification_checks') IS NOT NULL "
+        "AND to_regclass('ir_poll_state') IS NOT NULL AS all_tables_present"
+    ).fetchone()["all_tables_present"]
+
+
+def reset_incident_workflow_state(conn: psycopg.Connection) -> None:
+    """Clear Phase 2 state when its optional n8n-owned schema is installed.
+
+    RelayCart must still start and reset cleanly before Phase 2 creates these
+    tables. Check the complete table set first so partially applied DDL stays
+    untouched and no CASCADE can reach unrelated data.
+    """
+    if incident_workflow_schema_available(conn):
+        conn.execute(
+            "TRUNCATE TABLE ir_verification_checks, ir_remediation_attempts, "
+            "ir_approvals, ir_proposals, ir_assessments, ir_evidence, "
+            "ir_incident_events, ir_events, ir_incidents, ir_poll_state "
+            "RESTART IDENTITY"
+        )

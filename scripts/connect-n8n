@@ -1,0 +1,58 @@
+#!/usr/bin/env sh
+set -eu
+
+repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+n8n_container=${N8N_CONTAINER:-n8n}
+network_name=relaycart-n8n
+
+cd "$repo_dir"
+
+if ! docker inspect "$n8n_container" >/dev/null 2>&1; then
+  printf 'n8n container "%s" was not found. Set N8N_CONTAINER to its container name.\n' "$n8n_container" >&2
+  exit 1
+fi
+
+# Applying the Compose network declaration updates the RelayCart services; the
+# database volume and the separate n8n container are untouched.
+docker compose up -d postgres api
+
+if [ "$(docker inspect -f "{{if index .NetworkSettings.Networks \"$network_name\"}}connected{{end}}" "$n8n_container")" != connected ]; then
+  docker network connect "$network_name" "$n8n_container"
+fi
+
+# Probe from inside n8n so this checks Docker DNS and in-network ports, rather
+# than accidentally testing the host-published localhost port. Retry the API
+# while Compose finishes starting it.
+docker exec "$n8n_container" node -e '
+const net = require("node:net");
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+async function checkApi() {
+  for (let attempt = 0; attempt < 15; attempt += 1) {
+    try {
+      const response = await fetch("http://relaycart-api:8000/version", { signal: AbortSignal.timeout(3000) });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      console.log("n8n → http://relaycart-api:8000/version: reachable");
+      return;
+    } catch (error) {
+      if (attempt === 14) throw error;
+      await delay(1000);
+    }
+  }
+}
+function checkPostgres() {
+  return new Promise((resolve, reject) => {
+    const socket = net.connect({ host: "relaycart-postgres", port: 5432 });
+    socket.setTimeout(3000);
+    socket.once("connect", () => { socket.destroy(); resolve(); });
+    socket.once("error", reject);
+    socket.once("timeout", () => { socket.destroy(); reject(new Error("connection timeout")); });
+  });
+}
+checkApi()
+  .then(checkPostgres)
+  .then(() => console.log("n8n → relaycart-postgres:5432: reachable"))
+  .catch((error) => {
+    console.error(`n8n network probe failed: ${error.cause?.code || error.message}`);
+    process.exitCode = 1;
+  });
+'
