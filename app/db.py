@@ -94,6 +94,10 @@ CREATE TABLE IF NOT EXISTS application_events (
     details JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE TABLE IF NOT EXISTS health_failure_observations (
+    deployment_id INTEGER PRIMARY KEY REFERENCES deployments(id) ON DELETE CASCADE,
+    observed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 CREATE TABLE IF NOT EXISTS historical_incidents (
     id SERIAL PRIMARY KEY,
     incident_key TEXT NOT NULL UNIQUE,
@@ -118,6 +122,7 @@ CREATE TABLE IF NOT EXISTS historical_service_cases (
     resolved_at TIMESTAMPTZ NOT NULL
 );
 ALTER TABLE historical_incidents ADD COLUMN IF NOT EXISTS affected_customer_count INTEGER NOT NULL DEFAULT 0;
+UPDATE historical_incidents SET severity='SEV-3' WHERE severity='SEV-4';
 CREATE TABLE IF NOT EXISTS config (
     config_key TEXT PRIMARY KEY,
     value JSONB NOT NULL,

@@ -1,6 +1,6 @@
 # RelayCart incident response demo
 
-RelayCart is a local, synthetic SaaS operations demo. It illustrates a healthy checkout, a real failure caused by deploying v1.8.2, technical evidence of the failure, manual rollback, and order readback after recovery. It does not connect to real stores, customers, payment providers, or production systems. Incidents are not detected automatically and no customer messages are sent.
+RelayCart is a local, synthetic SaaS operations demo. It illustrates a healthy checkout, a successful deployment operation, an independent application health failure on v1.8.2, failed checkout evidence, manual rollback, and order readback after recovery. Deployment completion, application health, and business transaction success are distinct facts. It does not connect to real stores, customers, payment providers, or production systems. Incidents are not detected automatically and no customer messages are sent.
 
 Dashboard evidence: [healthy](docs/evidence/healthy.png) · [degraded](docs/evidence/degraded.png) · [recovered](docs/evidence/recovered.png).
 
@@ -16,10 +16,10 @@ docker compose ps
 
 The API and UI are served together at <http://127.0.0.1:8001>. The API container listens on port 8000; host port 8001 is used because localhost:8000 is already occupied. PostgreSQL is only reachable by other Compose services and is not published on the host. The demo uses local-only credentials from `.env.example`; do not reuse them elsewhere.
 
-## Demo: healthy → bad → rollback
+## Demo: healthy → deploy → detect → rollback
 
 1. Open the dashboard at <http://127.0.0.1:8001>. Run the checkout canary and confirm the order can be read back.
-2. Deploy v1.8.2 from the dashboard. Confirm `/health` reports the unhealthy state, `docker compose ps` shows the API as unhealthy, a new checkout fails, and `/logs` contains error evidence.
+2. Deploy v1.8.2 from the dashboard. The deployment operation completes. Then confirm `/health` independently reports the unhealthy application state, `docker compose ps` shows the API as unhealthy, a new checkout fails, and `/logs` contains separate `deployment.completed`, `health.failed`, and `checkout.failed` events.
 3. Roll back manually from the dashboard. Confirm the API returns to healthy, run another checkout, and verify its order readback.
 4. Select **Reset demo state** in the dashboard (or call `POST /demo/reset`) to restore the repeatable baseline.
 
@@ -46,7 +46,7 @@ docker compose ps
 curl -fsS http://127.0.0.1:8001/health
 ```
 
-Docker Compose health checks cover PostgreSQL readiness and API health, including the application's reported healthy state. The API waits for PostgreSQL's healthy state before starting. The API container becomes unhealthy during the simulated v1.8.2 failure and healthy again after rollback.
+Docker Compose health checks cover PostgreSQL readiness and API health, including the application's reported healthy state. The API waits for PostgreSQL's healthy state before starting. The API container becomes unhealthy during the simulated v1.8.2 failure and healthy again after rollback. The deploy endpoint reports only whether the release operation completed; it does not certify application health. Repeated health polls create at most one `health.failed` event for a deployment.
 
 ## Stop and reset
 

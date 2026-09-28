@@ -123,7 +123,7 @@ def seed_baseline() -> None:
             ("Retry storm after provider maintenance", "SEV-2", "Billing API", "Retries briefly increased worker queue depth."),
             ("Checkout validation regression", "SEV-2", "Checkout API", "A validation edge case blocked some international orders."),
             ("Slow invoice history query", "SEV-3", "Billing API", "A database query increased invoice history load time."),
-            ("Transient checkout error alert", "SEV-4", "Checkout API", "A brief monitoring spike had no reproduced checkout or order impact."),
+            ("Transient checkout error alert", "SEV-3", "Checkout API", "A brief monitoring spike had no reproduced checkout or order impact."),
             ("Intermittent cart lookup failures", "SEV-3", "Checkout API", "A cache refresh caused intermittent cart lookup failures."),
         ]
         for i, (title, severity, service, summary) in enumerate(incidents):
@@ -168,7 +168,7 @@ def reset_demo() -> None:
     with get_connection() as conn:
         conn.execute("TRUNCATE orders RESTART IDENTITY")
         conn.execute("TRUNCATE application_events RESTART IDENTITY")
-        conn.execute("TRUNCATE deployments RESTART IDENTITY")
+        conn.execute("TRUNCATE deployments, health_failure_observations RESTART IDENTITY")
         conn.execute(
             "UPDATE service_state SET status='healthy', version=%s, updated_at=%s "
             "WHERE service_id=(SELECT id FROM services WHERE service_key='checkout-api')",

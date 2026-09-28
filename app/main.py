@@ -81,6 +81,40 @@ def _event(
     )
 
 
+def _record_health_failure(conn: Any, version: str, reason: str) -> None:
+    """Record the first failed health observation for the active deployment only."""
+    deployment = conn.execute(
+        "SELECT d.id FROM deployments d JOIN services s ON s.id=d.service_id "
+        "JOIN service_state ss ON ss.service_id=s.id "
+        "WHERE s.service_key='checkout-api' AND ss.version=d.version AND d.version=%s "
+        "ORDER BY d.deployed_at DESC,d.id DESC LIMIT 1",
+        (version,),
+    ).fetchone()
+    if not deployment:
+        return
+    observed = conn.execute(
+        "INSERT INTO health_failure_observations(deployment_id) VALUES (%s) "
+        "ON CONFLICT (deployment_id) DO NOTHING RETURNING deployment_id",
+        (deployment["id"],),
+    ).fetchone()
+    if observed:
+        deployment_id = observed["deployment_id"]
+        _event(
+            conn,
+            level="ERROR",
+            event_type="health.failed",
+            service=SERVICE_NAME,
+            message="Health probe discovered the active application is unhealthy",
+            details={
+                "version": version,
+                "reason": reason,
+                "deployment_id": deployment_id,
+                "correlation_id": f"deployment-{deployment_id}",
+                "environment": "production-demo",
+            },
+        )
+
+
 def _event_view(row: dict[str, Any]) -> dict[str, Any]:
     details = row.get("details") or {}
     return {
@@ -108,7 +142,9 @@ def home() -> FileResponse:
 def health() -> dict[str, str]:
     try:
         with get_connection() as conn:
-            status, version, _ = _checkout_probe(conn)
+            status, version, reason = _checkout_probe(conn)
+            if status != "healthy":
+                _record_health_failure(conn, version, reason or "unhealthy")
     except Exception:
         status, version = "unhealthy", "unknown"
     return {"status": status, "version": version, "service": SERVICE_NAME}
@@ -140,7 +176,12 @@ def checkout(request: CheckoutRequest) -> dict[str, Any]:
                 event_type="checkout.failed",
                 service=SERVICE_NAME,
                 message="Checkout rejected because the active service is unhealthy",
-                details={"version": version, "reason": reason or "unhealthy", "correlation_id": correlation_id},
+                details={
+                    "version": version,
+                    "reason": reason or "unhealthy",
+                    "correlation_id": correlation_id,
+                    "environment": "production-demo",
+                },
             )
             unavailable = True
         else:
@@ -213,23 +254,28 @@ def deploy(request: DeployRequest) -> dict[str, Any]:
             "WHERE service_id=(SELECT id FROM services WHERE service_key='checkout-api')",
             (request.version,),
         )
-        status, _, reason = _checkout_probe(conn)
-        outcome = "degraded" if status != "healthy" else "succeeded"
-        note = "Configuration compatibility check failed" if reason else "Release is healthy"
-        conn.execute(
+        deployment = conn.execute(
             "INSERT INTO deployments(service_id,version,outcome,deployed_at,note) "
-            "SELECT id,%s,%s,NOW(),%s FROM services WHERE service_key='checkout-api'",
-            (request.version, outcome, note),
-        )
+            "SELECT id,%s,'completed',NOW(),'Release operation completed' "
+            "FROM services WHERE service_key='checkout-api' RETURNING id",
+            (request.version,),
+        ).fetchone()
+        deployment_id = deployment["id"]
         _event(
             conn,
-            level="ERROR" if status != "healthy" else "INFO",
-            event_type="deployment.degraded" if status != "healthy" else "deployment.succeeded",
+            level="INFO",
+            event_type="deployment.completed",
             service=SERVICE_NAME,
-            message="Release deployed; checkout compatibility check failed" if reason else "Release deployed successfully",
-            details={"version": request.version, "outcome": outcome, "reason": reason},
+            message="Release operation completed",
+            details={
+                "version": request.version,
+                "outcome": "completed",
+                "deployment_id": deployment_id,
+                "correlation_id": f"deployment-{deployment_id}",
+                "environment": "production-demo",
+            },
         )
-    return {"version": request.version, "status": status, "outcome": outcome}
+    return {"version": request.version, "deployment_status": "completed", "outcome": "completed"}
 
 
 @app.post("/rollback")
