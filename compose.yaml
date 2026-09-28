@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-relaycart}
+      POSTGRES_USER: ${POSTGRES_USER:-relaycart}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-relaycart_demo_only}
+    volumes:
+      - relaycart-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-relaycart}:${POSTGRES_PASSWORD:-relaycart_demo_only}@postgres:5432/${POSTGRES_DB:-relaycart}
+      APP_ENV: demo
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8001:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json; from urllib.request import urlopen; assert json.load(urlopen('http://127.0.0.1:8000/health', timeout=3))['status'] == 'healthy'"]
+      interval: 5s
+      timeout: 5s
+      retries: 2
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  relaycart-postgres:

@@ -1,0 +1,9 @@
+# Architecture
+
+Phase 1 runs two Compose services: FastAPI/Uvicorn (`api`) and PostgreSQL (`postgres`). The API is published only on host loopback at `127.0.0.1:8001`, forwarding to container port 8000. PostgreSQL has no host port; the API connects to it over Compose's private network.
+
+Compose waits for PostgreSQL's `pg_isready` health check before starting the API. The API container health check parses `/health` and requires its JSON status to be `healthy`; checkout uses the same application health probe. Thus the API container becomes unhealthy during the simulated v1.8.2 failure and healthy again after rollback. Checkout also records durable orders and operational events in PostgreSQL. Startup initializes the schema and repeatable synthetic merchant, subscription, service, and history seed data. PostgreSQL data lives in the named `relaycart-postgres` volume and survives a normal `docker compose down`; `docker compose down -v` removes it.
+
+`POST /demo/reset` clears demo orders and events, restores v1.8.1 and the legacy checkout configuration, and recreates the 20 fixed historical deployment rows. Customer records, service links, historical incidents, and historical service cases are immutable seed data and remain in place. The seed uses a fixed 2026-09-28 UTC anchor, so repeated resets return the same history and IDs. A changed seed definition requires a fresh local volume.
+
+`.env.example` provides local demo credentials, and `.env` is excluded from version control. These values are public demo defaults, not secrets suitable for any shared or deployed environment. Phase 2 is planned for n8n technical incident automation, and Phase 3 for GoHighLevel customer operations. Existing n8n 2.39.8 and GoHighLevel remain separate; neither phase is implemented or connected to by this stack.

@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+set -eu
+
+docker compose exec -T api pytest -q tests/test_phase1.py
