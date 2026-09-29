@@ -1,0 +1,220 @@
+#!/usr/bin/env python3
+"""Idempotent, synthetic-only RelayCart model setup in an isolated HighLevel location.
+
+Reads the ignored .env; never prints credentials or authorization headers.
+"""
+
+from __future__ import annotations
+
+import csv
+import io
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+import httpx
+
+ROOT = Path(__file__).resolve().parents[1]
+OBJECT = "custom_objects.relaycart_service_case"
+ASSOCIATION = "relaycart_affected_customer"
+CONTACT_FIELDS = ("RelayCart Customer Key", "RelayCart Plan", "RelayCart Demo Record")
+CASE_FIELDS = (
+    ("Incident ID", "incident_id", "TEXT"),
+    ("RelayCart Customer Key", "customer_key", "TEXT"),
+    ("Service", "service", "TEXT"),
+    ("Severity", "severity", "TEXT"),
+    ("Impact Summary", "impact_summary", "LARGE_TEXT"),
+    ("Technical Status", "technical_status", "TEXT"),
+    ("Customer Status", "customer_status", "TEXT"),
+    ("Affected Since", "affected_since", "DATE"),
+    ("Last Technical Update", "last_technical_update", "DATE"),
+    ("Recovery Verified At", "recovery_verified_at", "DATE"),
+    ("Customer Confirmed At", "customer_confirmed_at", "DATE"),
+    ("Sync Revision", "sync_revision", "NUMERICAL"),
+    ("Demo Record", "demo_record", "TEXT"),
+)
+
+
+def config() -> dict[str, str]:
+    result = {}
+    for line in (ROOT / ".env").read_text().splitlines():
+        if "=" in line and not line.lstrip().startswith("#"):
+            key, value = line.split("=", 1)
+            result[key] = value.strip()
+    if not result.get("GHL_LOCATION_TOKEN") or not result.get("GHL_LOCATION_ID"):
+        raise RuntimeError("The ignored .env needs GHL_LOCATION_TOKEN and GHL_LOCATION_ID")
+    return result
+
+
+def request(client: httpx.Client, method: str, path: str, **kwargs) -> dict:
+    response = client.request(method, path, **kwargs)
+    if not response.is_success:
+        detail = ""
+        if response.status_code in (400, 422):
+            try:
+                body = response.json()
+                detail = str(body.get("message") or body.get("error") or body.get("errors") or body)[:200]
+                detail = re.sub(r"pit-[A-Za-z0-9-]+", "[REDACTED]", detail)
+            except (ValueError, AttributeError):
+                pass
+        raise RuntimeError(f"HighLevel {method} {path} returned HTTP {response.status_code}: {detail}")
+    data = response.json()
+    if not isinstance(data, dict):
+        raise RuntimeError(f"HighLevel {path} returned an invalid response")
+    return data
+
+
+def psql(sql: str) -> str:
+    result = subprocess.run(
+        ["docker", "compose", "exec", "-T", "postgres", "psql", "-v", "ON_ERROR_STOP=1", "-U", "relaycart", "-d", "relaycart", "-At", "-c", sql],
+        cwd=ROOT, capture_output=True, text=True, check=True,
+    )
+    return result.stdout
+
+
+def provision(client: httpx.Client, location: str) -> dict:
+    objects = request(client, "GET", "/objects/", params={"locationId": location})["objects"]
+    matches = [item for item in objects if item.get("key") == OBJECT]
+    if len(matches) > 1:
+        raise RuntimeError("Duplicate RelayCart Service Case schemas")
+    if not matches:
+        request(client, "POST", "/objects/", json={
+            "labels": {"singular": "Service Case", "plural": "Service Cases"},
+            "key": OBJECT,
+            "description": "Synthetic RelayCart customer impact and recovery cases",
+            "locationId": location,
+            "primaryDisplayPropertyDetails": {
+                "key": f"{OBJECT}.case_key", "name": "Case Key", "dataType": "TEXT",
+            },
+        })
+    body = request(client, "GET", f"/custom-fields/object-key/{OBJECT}", params={"locationId": location})
+    folders = [item for item in body["folders"] if item.get("name") == "Service Case Info"]
+    if len(folders) != 1:
+        raise RuntimeError("Expected one Service Case Info folder")
+    folder_id = folders[0]["id"]
+    existing = {item["fieldKey"]: item for item in body["fields"]}
+    for name, key, kind in CASE_FIELDS:
+        full_key = f"{OBJECT}.{key}"
+        if full_key in existing:
+            if existing[full_key]["dataType"] != kind:
+                raise RuntimeError(f"Field type mismatch: {full_key}")
+            continue
+        request(client, "POST", "/custom-fields/", json={
+            "locationId": location, "name": name, "showInForms": False,
+            "dataType": kind, "fieldKey": full_key, "objectKey": OBJECT,
+            "parentId": folder_id,
+        })
+    associations = request(client, "GET", "/associations/", params={"locationId": location})["associations"]
+    matches = [item for item in associations if item.get("key") == ASSOCIATION]
+    if len(matches) > 1:
+        raise RuntimeError("Duplicate RelayCart association definitions")
+    if not matches:
+        created = request(client, "POST", "/associations/", json={
+            "locationId": location, "key": ASSOCIATION,
+            "firstObjectKey": "contact", "firstObjectLabel": "Service Cases",
+            "secondObjectKey": OBJECT, "secondObjectLabel": "Affected Customer",
+        })
+        association_id = created.get("id") or created.get("association", {}).get("id")
+    else:
+        association_id = matches[0]["id"]
+    if not association_id:
+        raise RuntimeError("Association ID missing")
+    fields = request(client, "GET", f"/locations/{location}/customFields", params={"model": "contact"})["customFields"]
+    contact_ids = {}
+    for name in CONTACT_FIELDS:
+        matches = [field for field in fields if field.get("name") == name and field.get("model") == "contact"]
+        if len(matches) > 1:
+            raise RuntimeError(f"Duplicate contact field: {name}")
+        if matches:
+            contact_ids[name] = matches[0]["id"]
+        else:
+            created = request(client, "POST", f"/locations/{location}/customFields", json={"name": name, "dataType": "TEXT", "model": "contact"})
+            contact_ids[name] = created.get("customField", created)["id"]
+    print(f"Service Case schema={OBJECT}; fields={1 + len(CASE_FIELDS)}; association={association_id}; contact_fields={len(contact_ids)}")
+    return {"association_id": association_id, "contact_fields": contact_ids}
+
+
+def customers() -> list[dict[str, str]]:
+    data = psql("COPY (SELECT c.slug,c.name,c.email,c.company,s.plan FROM customers c JOIN subscriptions s ON s.customer_id=c.id ORDER BY c.id) TO STDOUT WITH CSV HEADER")
+    rows = list(csv.DictReader(io.StringIO(data)))
+    if len(rows) != 30 or len({row["slug"] for row in rows}) != 30:
+        raise RuntimeError("Expected exactly 30 distinct RelayCart customers")
+    if any(not row["email"].endswith("@example.test") for row in rows):
+        raise RuntimeError("Refusing to seed non-synthetic contact emails")
+    return rows
+
+
+def seed(client: httpx.Client, location: str, field_ids: dict[str, str]) -> None:
+    # This account is isolated, but still check each identity before creating a contact.
+    data = request(client, "GET", "/contacts/", params={"locationId": location, "limit": 100}, headers={"Version": "2021-07-28"})
+    contacts = data["contacts"]
+    if data.get("meta", {}).get("nextPage"):
+        raise RuntimeError("Contact list needs pagination; refusing a partial identity scan")
+    by_email = {}
+    for item in contacts:
+        if item.get("email"):
+            by_email.setdefault(item["email"].lower(), []).append(item)
+    created = 0
+    for row in customers():
+        slug, email = row["slug"], row["email"].lower()
+        mapped_id = psql(f"SELECT contact_id FROM ghl_contacts WHERE customer_key='{slug}' AND location_id='{location}'").strip()
+        if mapped_id:
+            existing = request(client, "GET", f"/contacts/{mapped_id}", headers={"Version": "2021-07-28"})["contact"]
+            if (existing.get("email") or "").lower() != email or "relaycart-demo" not in (existing.get("tags") or []):
+                raise RuntimeError(f"Stored contact mapping failed remote identity check for {slug}")
+            continue
+        matches = by_email.get(email, [])
+        if len(matches) > 1:
+            raise RuntimeError(f"Ambiguous contact email for {slug}")
+        if matches:
+            contact = matches[0]
+            if "relaycart-demo" not in contact.get("tags", []):
+                raise RuntimeError(f"Existing non-RelayCart contact has seed email for {slug}")
+        else:
+            parts = row["name"].split(" ", 1)
+            body = {
+                "locationId": location, "firstName": parts[0], "lastName": parts[1],
+                "email": email, "companyName": row["company"],
+                "tags": ["relaycart-demo"], "source": "RelayCart synthetic demo",
+                "customFields": [
+                    {"id": field_ids["RelayCart Customer Key"], "fieldValue": slug},
+                    {"id": field_ids["RelayCart Plan"], "fieldValue": row["plan"]},
+                    {"id": field_ids["RelayCart Demo Record"], "fieldValue": "yes"},
+                ],
+            }
+            contact = request(client, "POST", "/contacts/", json=body, headers={"Version": "2021-07-28"})["contact"]
+            created += 1
+        contact_id = contact["id"]
+        if not re.fullmatch(r"[A-Za-z0-9]+", contact_id) or not re.fullmatch(r"[a-z0-9-]+", slug):
+            raise RuntimeError("Unexpected contact identity")
+        psql("INSERT INTO ghl_contacts(customer_key,location_id,contact_id) "
+             f"VALUES ('{slug}','{location}','{contact_id}') "
+             "ON CONFLICT (customer_key) DO UPDATE SET synced_at=NOW() "
+             "WHERE ghl_contacts.location_id=EXCLUDED.location_id AND ghl_contacts.contact_id=EXCLUDED.contact_id")
+    count = int(psql("SELECT count(*) FROM ghl_contacts WHERE location_id='" + location + "'").strip())
+    print(f"RelayCart contacts created={created}; mapped={count}")
+    if count != 30:
+        raise RuntimeError("Expected 30 GHL contact mappings")
+
+
+def main() -> int:
+    try:
+        cfg = config()
+        subprocess.run(["docker", "compose", "exec", "-T", "postgres", "psql", "-v", "ON_ERROR_STOP=1", "-U", "relaycart", "-d", "relaycart"],
+                       cwd=ROOT, input=(ROOT / "n8n/phase3-schema.sql").read_text(), text=True,
+                       capture_output=True, check=True)
+        with httpx.Client(base_url="https://services.leadconnectorhq.com", headers={
+            "Authorization": "Bearer " + cfg["GHL_LOCATION_TOKEN"], "Version": "v3", "Accept": "application/json",
+        }, timeout=20, trust_env=False) as client:
+            resources = provision(client, cfg["GHL_LOCATION_ID"])
+            if len(sys.argv) > 1 and sys.argv[1] == "seed":
+                seed(client, cfg["GHL_LOCATION_ID"], resources["contact_fields"])
+        return 0
+    except (RuntimeError, subprocess.CalledProcessError, httpx.HTTPError) as error:
+        print(f"ghl-provision: {type(error).__name__}: {error}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

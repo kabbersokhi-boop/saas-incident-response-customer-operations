@@ -93,7 +93,11 @@ def api(method: str, path: str, body: object | None = None) -> object:
         raise SystemExit(f"n8n API client failed ({type(exc).__name__}).") from None
     if result.returncode:
         # Never forward child stderr: it could contain runtime details.
-        raise SystemExit("n8n API request failed; check the n8n container and API access.")
+        try:
+            status = json.loads(result.stdout).get("status")
+        except (ValueError, AttributeError):
+            status = "unavailable"
+        raise SystemExit(f"n8n API request failed (HTTP {status}); check the n8n container and API access.")
     try:
         envelope = json.loads(result.stdout)
     except json.JSONDecodeError:
@@ -105,6 +109,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("list", help="list workflow IDs and names")
+    status_parser = sub.add_parser("status", help="read one workflow's active state")
+    status_parser.add_argument("workflow_id")
     export_parser = sub.add_parser("export", help="export one sanitized workflow as JSON")
     export_parser.add_argument("workflow_id")
     export_parser.add_argument("--output", required=True, type=Path)
@@ -113,6 +119,8 @@ def main() -> int:
     update_parser = sub.add_parser("update", help="update an explicitly selected workflow")
     update_parser.add_argument("workflow_id")
     update_parser.add_argument("workflow_json", type=Path)
+    activate_parser = sub.add_parser("activate", help="activate one explicitly selected workflow")
+    activate_parser.add_argument("workflow_id")
     args = parser.parse_args()
 
     if args.command == "list":
@@ -121,10 +129,19 @@ def main() -> int:
             print(f"{workflow.get('id', '')}\t{workflow.get('name', '')}")
         return 0
 
+    if args.command == "status":
+        result = api("GET", f"/workflows/{args.workflow_id}")
+        print(f"Workflow {args.workflow_id} active={bool(result.get('active'))}")
+        return 0
+
     if args.command == "export":
         result = api("GET", f"/workflows/{args.workflow_id}")
         args.output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
         print(f"Exported sanitized workflow {args.workflow_id} to {args.output}")
+        return 0
+    if args.command == "activate":
+        result = api("POST", f"/workflows/{args.workflow_id}/activate")
+        print(f"Workflow {args.workflow_id} active={bool(result.get('active'))}")
         return 0
 
     try:

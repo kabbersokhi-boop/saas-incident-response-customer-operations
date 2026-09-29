@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+"""Read-only, credential-safe audit of current RelayCart GHL Service Cases."""
+
+from __future__ import annotations
+
+import os
+import time
+
+import httpx
+
+from app.customer_ops import ASSOCIATION_ID, OBJECT, _request
+from app.db import get_connection
+
+
+def main() -> None:
+    with get_connection() as conn:
+        rows = conn.execute("""SELECT e.incident_id,e.customer_key,e.ghl_record_id,gc.contact_id
+            FROM ghl_effects e JOIN ghl_contacts gc ON gc.customer_key=e.customer_key
+            WHERE e.incident_id=(SELECT incident_id FROM ir_incidents
+                WHERE environment='production-demo' AND service='checkout-api'
+                ORDER BY opened_at DESC LIMIT 1) ORDER BY e.customer_key""").fetchall()
+        incident_id = rows[0]["incident_id"] if rows else None
+        control = conn.execute("""SELECT count(*) AS cases FROM ghl_effects
+            WHERE incident_id=%s AND customer_key='green-dental-21'""",
+            (incident_id,)).fetchone()["cases"]
+    if len(rows) != 18 or control:
+        raise RuntimeError("Expected 18 checkout cases and no Green Dental case")
+    location = os.environ["GHL_LOCATION_ID"]
+    with httpx.Client(base_url="https://services.leadconnectorhq.com", timeout=20,
+                      trust_env=False, headers={"Authorization": "Bearer " + os.environ["GHL_LOCATION_TOKEN"],
+                                                "Version": "v3", "Accept": "application/json"}) as client:
+        control_key = f"SC-{incident_id}-green-dental-21"
+        control_search = _request(client, "POST", f"/objects/{OBJECT}/records/search", json={
+            "locationId": location, "page": 1, "pageLimit": 20,
+            "query": control_key, "searchAfter": []})
+        if any(item.get("properties", {}).get("case_key") == control_key
+               for item in control_search.get("records", [])):
+            raise RuntimeError("Green Dental unexpectedly has a checkout Service Case in GHL")
+        statuses = {}
+        for row in rows:
+            case = _request(client, "GET", f"/objects/{OBJECT}/records/{row['ghl_record_id']}",
+                            params={"locationId": location})
+            record = case.get("record", case)
+            props = record.get("properties", {})
+            technical = props.get("technical_status")
+            customer = props.get("customer_status")
+            case_key = f"SC-{row['incident_id']}-{row['customer_key']}"
+            if props.get("case_key") != case_key or props.get("demo_record") != "yes":
+                raise RuntimeError("GHL case identity or demo marker mismatch")
+            statuses[customer] = statuses.get(customer, 0) + 1
+            if row["customer_key"] in ("acme-bikes", "ocean-apparel-02"):
+                relations = _request(client, "GET", f"/associations/relations/{row['contact_id']}",
+                                     params={"locationId": location, "skip": 0, "limit": 100}).get("relations", [])
+                if not any(item.get("secondRecordId") == row["ghl_record_id"] and
+                           item.get("associationId") == ASSOCIATION_ID for item in relations):
+                    raise RuntimeError("Missing visible Contact ↔ Service Case association")
+                tasks = _request(client, "GET", f"/contacts/{row['contact_id']}/tasks").get("tasks", [])
+                matching_tasks = [task for task in tasks if task.get("title") ==
+                                  f"RelayCart follow-up · {incident_id}"]
+                expected = 1 if row["customer_key"] == "ocean-apparel-02" else 0
+                if len(matching_tasks) != expected:
+                    raise RuntimeError(f"Unexpected support task count for {row['customer_key']}")
+                print(row["customer_key"], "technical=" + str(technical), "customer=" + str(customer),
+                      "case=" + row["ghl_record_id"], "tasks=" + str(len(matching_tasks)))
+            time.sleep(0.4)
+        print("cases", len(rows), "green_dental_cases", control, "status_counts", statuses)
+
+
+if __name__ == "__main__":
+    main()

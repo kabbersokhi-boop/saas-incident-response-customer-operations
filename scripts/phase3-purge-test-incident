@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+"""Remove one named, synthetic RelayCart test incident from the isolated GHL location.
+
+Run only after `/demo/reset` has removed that incident locally, so scheduled
+reconciliation cannot recreate its cases. This never touches contacts.
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import time
+
+import httpx
+
+from app.customer_ops import OBJECT, _request
+from app.db import get_connection
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("incident_id")
+    parser.add_argument("--execute", action="store_true")
+    args = parser.parse_args()
+    if not args.incident_id.startswith("INC-"):
+        raise RuntimeError("Expected an exact RelayCart incident ID")
+    with get_connection() as conn:
+        active = conn.execute("SELECT 1 FROM ir_incidents WHERE incident_id=%s",
+                              (args.incident_id,)).fetchone()
+        rows = conn.execute("""SELECT c.slug AS customer_key,gc.contact_id
+            FROM customers c JOIN customer_service_subscriptions css ON css.customer_id=c.id
+            JOIN services s ON s.id=css.service_id AND s.service_key='checkout-api'
+            JOIN ghl_contacts gc ON gc.customer_key=c.slug AND gc.location_id=%s
+            WHERE css.status='active' ORDER BY c.slug""",
+            (os.environ["GHL_LOCATION_ID"],)).fetchall()
+    if active or len(rows) != 18:
+        raise RuntimeError("Incident still local or checkout mapping is not exactly 18")
+    cases = []
+    tasks = []
+    location = os.environ["GHL_LOCATION_ID"]
+    with httpx.Client(base_url="https://services.leadconnectorhq.com", timeout=20,
+                      trust_env=False, headers={"Authorization": "Bearer " + os.environ["GHL_LOCATION_TOKEN"],
+                                                "Version": "v3", "Accept": "application/json"}) as client:
+        for row in rows:
+            key = f"SC-{args.incident_id}-{row['customer_key']}"
+            result = _request(client, "POST", f"/objects/{OBJECT}/records/search", json={
+                "locationId": location, "page": 1, "pageLimit": 20,
+                "query": key, "searchAfter": []})
+            found = [item for item in result.get("records", [])
+                     if item.get("properties", {}).get("case_key") == key]
+            if len(found) > 1:
+                raise RuntimeError(f"Duplicate test case: {key}")
+            if found:
+                props = found[0]["properties"]
+                if props.get("demo_record") != "yes" or props.get("incident_id") != args.incident_id:
+                    raise RuntimeError(f"Remote case not scoped to demo incident: {key}")
+                cases.append(found[0]["id"])
+            task_result = _request(client, "GET", f"/contacts/{row['contact_id']}/tasks")
+            for task in task_result.get("tasks", []):
+                if task.get("title") == f"RelayCart follow-up · {args.incident_id}":
+                    tasks.append((row["contact_id"], task["id"]))
+        print(f"scoped_demo_incident={args.incident_id} cases={len(cases)} tasks={len(tasks)}")
+        if not args.execute:
+            print("Dry run; pass --execute after reviewing the exact incident ID.")
+            return
+        for contact_id, task_id in tasks:
+            _request(client, "DELETE", f"/contacts/{contact_id}/tasks/{task_id}")
+            time.sleep(0.4)
+        for case_id in cases:
+            _request(client, "DELETE", f"/objects/{OBJECT}/records/{case_id}")
+            time.sleep(0.4)
+    print(f"removed_scoped_test_cases={len(cases)} removed_scoped_tasks={len(tasks)}")
+
+
+if __name__ == "__main__":
+    main()

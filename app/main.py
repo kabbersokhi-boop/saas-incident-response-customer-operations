@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from psycopg.types.json import Jsonb
 
 from .db import get_connection, incident_workflow_schema_available, initialize_schema
+from .customer_ops import poll_feedback, sync as sync_customer_impact
 from .seed import (
     BAD_VERSION,
     CURRENT_VERSION,
@@ -57,6 +58,49 @@ class RollbackRequest(BaseModel):
 
 class CheckoutFaultRequest(BaseModel):
     enabled: bool
+
+
+@app.post("/customer-ops/sync")
+def customer_impact_sync(simulate_503: bool = False) -> dict:
+    """Local n8n orchestration entrypoint; a GHL failure never mutates the incident."""
+    try:
+        return sync_customer_impact(simulate_503=simulate_503)
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+@app.post("/customer-ops/poll-feedback")
+def customer_recovery_poll() -> dict:
+    try:
+        return poll_feedback()
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+@app.get("/customer-ops/recovery")
+def customer_recovery_projection() -> dict:
+    with get_connection() as conn:
+        incident = conn.execute("""SELECT incident_id,state FROM ir_incidents
+            WHERE service='checkout-api' ORDER BY opened_at DESC LIMIT 1""").fetchone()
+        if not incident:
+            return {"incident_id": None, "technical_status": None, "affected": 0,
+                    "confirmed_resolved": 0, "needs_follow_up": 0,
+                    "awaiting_confirmation": 0, "rows": []}
+        rows = conn.execute("""SELECT e.customer_key,c.company,e.ghl_record_id,
+            COALESCE((SELECT f.outcome FROM ghl_customer_feedback f
+                WHERE f.incident_id=e.incident_id AND f.customer_key=e.customer_key
+                ORDER BY f.occurred_at DESC LIMIT 1),
+                CASE WHEN i.state='RECOVERED' THEN 'AWAITING_CONFIRMATION'
+                     ELSE 'AWAITING_RECOVERY' END) AS customer_status
+            FROM ghl_effects e JOIN customers c ON c.slug=e.customer_key
+            JOIN ir_incidents i ON i.incident_id=e.incident_id
+            WHERE e.incident_id=%s ORDER BY c.company""", (incident["incident_id"],)).fetchall()
+    return {"incident_id": incident["incident_id"], "technical_status": incident["state"],
+            "affected": len(rows),
+            "confirmed_resolved": sum(r["customer_status"] == "CONFIRMED_RESOLVED" for r in rows),
+            "needs_follow_up": sum(r["customer_status"] == "NEEDS_FOLLOW_UP" for r in rows),
+            "awaiting_confirmation": sum(r["customer_status"] == "AWAITING_CONFIRMATION" for r in rows),
+            "rows": [dict(r) for r in rows]}
 
 
 def _checkout_probe(conn: Any) -> tuple[str, str, str | None]:

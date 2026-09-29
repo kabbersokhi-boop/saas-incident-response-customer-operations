@@ -25,6 +25,8 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-relaycart}:${POSTGRES_PASSWORD:-relaycart_demo_only}@postgres:5432/${POSTGRES_DB:-relaycart}
       APP_ENV: demo
+      GHL_LOCATION_ID: ${GHL_LOCATION_ID:-}
+      GHL_LOCATION_TOKEN: ${GHL_LOCATION_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy

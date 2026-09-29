@@ -15,6 +15,7 @@
     checkout: $('#checkout-result'),
     toast: $('#toast-region'),
     incident: $('#live-incident'),
+    customerRecovery: $('#customer-recovery-list'),
   };
   let state = null;
   let pending = false;
@@ -405,9 +406,51 @@
     }
   }
 
+  function renderCustomerRecovery(data) {
+    const metrics = $('#customer-recovery-metrics');
+    const stateLabel = $('#customer-recovery-state');
+    const rows = asArray(data?.rows);
+    stateLabel.textContent = data?.incident_id ? `${data.incident_id} · ${display(data.technical_status)}` : 'NO CURRENT INCIDENT';
+    metrics.replaceChildren();
+    [
+      ['Affected customers', data?.affected ?? 0],
+      ['Confirmed resolved', data?.confirmed_resolved ?? 0],
+      ['Awaiting confirmation', data?.awaiting_confirmation ?? 0],
+      ['Needs follow-up', data?.needs_follow_up ?? 0],
+    ].forEach(([label, value]) => {
+      const item = node('div', 'customer-recovery-metric');
+      item.append(node('strong', '', value), node('span', '', label));
+      metrics.append(item);
+    });
+    if (!rows.length) return setEmpty(els.customerRecovery, 'No checkout customers have current Service Cases.');
+    els.customerRecovery.replaceChildren();
+    const featured = rows.filter((row) => ['acme-bikes', 'ocean-apparel-02'].includes(row.customer_key));
+    const others = rows.filter((row) => !['acme-bikes', 'ocean-apparel-02'].includes(row.customer_key));
+    [...featured, ...others].slice(0, 8).forEach((row) => {
+      const item = node('div', 'customer-recovery-row');
+      const statusStyle = row.customer_status === 'CONFIRMED_RESOLVED' ? 'ok'
+        : row.customer_status === 'NEEDS_FOLLOW_UP' ? 'bad' : 'warn';
+      item.append(node('span', '', row.company),
+        node('span', `customer-recovery-status ${statusStyle}`, row.customer_status));
+      els.customerRecovery.append(item);
+    });
+    const control = node('div', 'customer-recovery-row control');
+    control.append(node('span', '', 'Green Dental'), node('span', 'customer-recovery-status', 'NOT AFFECTED'));
+    els.customerRecovery.append(control);
+  }
+
+  async function loadCustomerRecovery() {
+    try {
+      renderCustomerRecovery(await request('/customer-ops/recovery'));
+    } catch (error) {
+      $('#customer-recovery-state').textContent = 'UNAVAILABLE';
+      setEmpty(els.customerRecovery, 'Could not load customer recovery: ' + error.message);
+    }
+  }
+
   async function refreshAll() {
     $('#refresh-button').disabled = true;
-    await Promise.all([loadHealth(), loadState(), loadLogs(), loadActiveIncident()]);
+    await Promise.all([loadHealth(), loadState(), loadLogs(), loadActiveIncident(), loadCustomerRecovery()]);
     $('#refresh-button').disabled = false;
   }
 
@@ -451,12 +494,12 @@
       const message = `${label} completed${outcome ? ` · ${display(outcome)}` : ''}`;
       setOperation(message, degraded ? 'error' : 'success');
       showToast(message, degraded);
-      await Promise.all([loadState(false), loadLogs(), loadActiveIncident()]);
+      await Promise.all([loadState(false), loadLogs(), loadActiveIncident(), loadCustomerRecovery()]);
     } catch (error) {
       const message = `${label} failed: ${error.message}`;
       setOperation(message, 'error');
       showToast(message, true);
-      await Promise.all([loadState(false), loadLogs(), loadActiveIncident()]);
+      await Promise.all([loadState(false), loadLogs(), loadActiveIncident(), loadCustomerRecovery()]);
     } finally {
       setBusy(buttons, false);
     }
@@ -476,7 +519,7 @@
       const summary = field(response, 'message', 'status') || 'Checkout request accepted';
       els.checkout.append(document.createTextNode(`${display(summary)}${orderId ? ` · Order ${display(orderId)}` : ''}`));
       showToast('Checkout request completed.');
-      await Promise.all([loadState(false), loadLogs(), loadActiveIncident()]);
+      await Promise.all([loadState(false), loadLogs(), loadActiveIncident(), loadCustomerRecovery()]);
       if (orderId) await readOrder(String(orderId));
     } catch (error) {
       els.checkout.className = 'checkout-result error';
@@ -518,5 +561,5 @@
   $('#reset-button').addEventListener('click', resetDemo);
 
   refreshAll();
-  window.setInterval(() => { loadState(false); loadLogs(); loadActiveIncident(); }, 30000);
+  window.setInterval(() => { loadState(false); loadLogs(); loadActiveIncident(); loadCustomerRecovery(); }, 30000);
 })();

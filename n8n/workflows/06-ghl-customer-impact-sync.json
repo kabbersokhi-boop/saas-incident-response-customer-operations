@@ -1,0 +1,36 @@
+{
+  "name": "GHL 01 - Customer Impact Sync",
+  "nodes": [
+    {
+      "parameters": {"rule": {"interval": [{"field": "seconds", "secondsInterval": 30}]}},
+      "id": "478f3bec-26ef-47c6-8f1f-59e37dfeae7d",
+      "name": "Reconcile Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-400, 0]
+    },
+    {
+      "parameters": {"httpMethod": "POST", "path": "relaycart/customer-impact/sync", "responseMode": "lastNode", "options": {}},
+      "id": "65073d6f-b749-4abb-a4aa-81ddc02bb407",
+      "name": "Manual Sync Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-400, 180],
+      "webhookId": "relaycart-customer-impact-sync"
+    },
+    {
+      "parameters": {"method": "POST", "url": "http://relaycart-api:8000/customer-ops/sync", "options": {"timeout": 120000}},
+      "id": "8604f27c-a169-4ed4-be57-2cbe0c8ca86a",
+      "name": "Reconcile Customer Effects",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-120, 80]
+    }
+  ],
+  "connections": {
+    "Reconcile Schedule": {"main": [[{"node": "Reconcile Customer Effects", "type": "main", "index": 0}]]},
+    "Manual Sync Webhook": {"main": [[{"node": "Reconcile Customer Effects", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1", "timezone": "UTC", "saveExecutionProgress": true},
+  "active": false
+}

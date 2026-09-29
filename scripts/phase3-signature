@@ -1,0 +1,75 @@
+#!/usr/bin/env python3
+"""Run the real RelayCart Phase 3 signature incident through technical recovery.
+
+Run inside the API container. Approval form tokens remain in memory and are never
+printed. Customer Conversation AI testing is intentionally a separate GHL step.
+"""
+
+from __future__ import annotations
+
+import sys
+import time
+
+import httpx
+
+sys.path.insert(0, "/app/tests")
+from test_phase2_n8n import post_decision, production_proposal  # noqa: E402
+
+from app.db import get_connection  # noqa: E402
+
+
+def main() -> None:
+    with httpx.Client(base_url="http://127.0.0.1:8000", timeout=130) as client:
+        response = client.post("/demo/reset")
+        response.raise_for_status()
+        baseline = client.post("/checkout", json={"customer_slug": "acme-bikes", "amount": "12.00", "currency": "USD"})
+        if baseline.status_code != 201:
+            raise RuntimeError("Baseline checkout failed")
+        row, form = production_proposal(client)
+        incident_id = row["incident_id"]
+        print(f"incident={incident_id} state=WAITING_FOR_APPROVAL")
+        deadline = time.monotonic() + 240
+        while time.monotonic() < deadline:
+            response = client.post("/customer-ops/sync")
+            response.raise_for_status()
+            with get_connection() as conn:
+                result = conn.execute("""SELECT count(*) AS total,
+                    count(*) FILTER (WHERE status='SUCCEEDED') AS succeeded
+                    FROM ghl_effects WHERE incident_id=%s""", (incident_id,)).fetchone()
+            if result["total"] == 18 and result["succeeded"] == 18:
+                break
+            time.sleep(2)
+        else:
+            raise RuntimeError("GHL impact fanout did not complete before approval")
+        print("affected=18 GHL_cases=18")
+        decision = post_decision(form, "approve")
+        decision.raise_for_status()
+        deadline = time.monotonic() + 100
+        while time.monotonic() < deadline:
+            with get_connection() as conn:
+                state = conn.execute("SELECT state FROM ir_incidents WHERE incident_id=%s", (incident_id,)).fetchone()["state"]
+            if state == "RECOVERED":
+                break
+            time.sleep(1)
+        else:
+            raise RuntimeError(f"Technical recovery did not complete: {state}")
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            response = client.post("/customer-ops/sync")
+            response.raise_for_status()
+            with get_connection() as conn:
+                result = conn.execute("""SELECT count(*) AS total,
+                    count(*) FILTER (WHERE status='SUCCEEDED' AND
+                        desired_state->>'technical_status'='RECOVERED') AS recovered
+                    FROM ghl_effects WHERE incident_id=%s""", (incident_id,)).fetchone()
+            if result["total"] == 18 and result["recovered"] == 18:
+                break
+            time.sleep(2)
+        else:
+            raise RuntimeError("GHL Service Cases did not catch up to RECOVERED")
+        print("technical=RECOVERED GHL_cases_recovered=18")
+        print("phase3_signature_technical_leg=PASS")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,6 +1,8 @@
 # RelayCart incident response demo
 
-RelayCart is a local, synthetic SaaS operations demo. Phase 1 provides the checkout service and independent deployment, health, and business-transaction evidence. Phase 2 adds n8n incident automation backed by PostgreSQL and an advisory NVIDIA NIM investigation. Customer operations through GoHighLevel are outside this phase.
+RelayCart is a local, synthetic SaaS operations demo. Phase 1 provides checkout and independent deployment, health, and business-transaction evidence. Phase 2 adds n8n incident automation, PostgreSQL, and advisory NVIDIA NIM investigation. Phase 3 adds customer operations in an isolated GoHighLevel location: 30 synthetic contacts, real Service Case custom objects and associations, three native workflows, Conversation AI recovery confirmation, and human follow-up.
+
+**n8n owns technical recovery; GoHighLevel owns customer recovery.** A technically `RECOVERED` incident does not mean every customer's Service Case is `CONFIRMED_RESOLVED`. One customer can confirm success while another needs support.
 
 The release operation, application health, and business transaction are separate facts:
 
@@ -60,8 +62,18 @@ Phase 2 checks (requires the local Compose services and existing n8n instance):
 
 The Phase 2 verification report lists which live workflow scenarios have been exercised and any remaining limitations.
 
+## Phase 3 customer operations
+
+The two small Phase 3 n8n workflows reconcile customer impact and feedback. A deterministic PostgreSQL effect ledger retries temporary HighLevel failures without changing the technical incident. RelayCart subscriptions select the 18 checkout customers; Green Dental is the unaffected control. Each affected customer receives one associated HighLevel Service Case per incident.
+
+The native HighLevel Service Case Intake and Technical Recovery workflows hand a recovered case to the contact-based Customer Recovery Confirmation workflow. Its Conversation AI asks the customer to retry checkout. Confirmation closes only that customer's case; a still-broken reply creates a human follow-up task while the technical incident remains `RECOVERED`. Test chat uses only synthetic Live Chat conversations, never real outbound SMS or email.
+
+![Synthetic RelayCart customer recovery: technical incident recovered, Acme confirmed, Ocean needs follow-up, Green Dental unaffected](docs/evidence/phase3-relaycart-customer-recovery.png)
+
+See the [Phase 3 architecture](docs/phase-3-architecture.md), [data model](docs/ghl-data-model.md), [reproduction](docs/phase-3-demo.md), and [verification](docs/phase-3-verification.md). The dashboard at <http://127.0.0.1:8001> displays the customer-recovery projection; GoHighLevel remains the customer-operations system of record.
+
 ## Boundaries
 
-This is a single-machine synthetic demo, not a production incident-management service. It has no production IAM, real customer records, customer messaging, GHL objects/workflows, payment integration, or deployment target. The local approval page is not authenticated for production use. NVIDIA NIM is an advisory investigator only. Log contents are untrusted evidence. A successful rollback response alone does not constitute recovery.
+This is a single-machine synthetic demo, not a production incident-management service. It has no production IAM, real customer records, real customer messaging, payment integration, or deployment target. The local approval page is not authenticated for production use. NVIDIA NIM is an advisory investigator only. Log contents are untrusted evidence. A successful rollback response alone does not constitute recovery.
 
 See [Phase 1 architecture](docs/architecture.md), [business scenario](docs/business-scenario.md), [Phase 1 verification](docs/phase-1-verification.md), and the Phase 2 documents linked above.

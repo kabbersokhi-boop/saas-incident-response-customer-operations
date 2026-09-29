@@ -170,8 +170,14 @@ def reset_incident_workflow_state(conn: psycopg.Connection) -> None:
     untouched and no CASCADE can reach unrelated data.
     """
     if incident_workflow_schema_available(conn):
+        phase3_tables = conn.execute(
+            "SELECT to_regclass('ghl_effects') IS NOT NULL "
+            "AND to_regclass('ghl_customer_feedback') IS NOT NULL AS installed"
+        ).fetchone()["installed"]
         conn.execute(
-            "TRUNCATE TABLE ir_verification_checks, ir_remediation_attempts, "
+            "TRUNCATE TABLE "
+            + ("ghl_customer_feedback, ghl_effects, " if phase3_tables else "")
+            + "ir_verification_checks, ir_remediation_attempts, "
             "ir_approvals, ir_proposals, ir_assessments, ir_evidence, "
             "ir_incident_events, ir_events, ir_incidents, ir_poll_state "
             "RESTART IDENTITY"
