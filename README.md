@@ -1,81 +1,162 @@
-# RelayCart incident response demo
+# RelayCart — Incident Response & Customer Operations Automation
 
-RelayCart is a local, synthetic SaaS operations demo. Phase 1 provides checkout and independent deployment, health, and business-transaction evidence. Phase 2 adds n8n incident automation, PostgreSQL, and advisory NVIDIA NIM investigation. Phase 3 adds customer operations in an isolated GoHighLevel location: 30 synthetic contacts, real Service Case custom objects and associations, three native workflows, Conversation AI recovery confirmation, and human follow-up.
+RelayCart demonstrates a SaaS incident lifecycle across **n8n, PostgreSQL, NVIDIA NIM, FastAPI, and GoHighLevel**. A completed deployment can leave checkout broken. n8n correlates failure signals, gathers bounded evidence, requests AI advice, and gates an exact rollback on human approval. Recovery requires a working checkout and a retrievable order.
 
-**n8n orchestrates technical recovery and the cross-platform customer handoff; PostgreSQL keeps it durable; GoHighLevel runs customer operations.** A technically `RECOVERED` incident does not mean every customer's Service Case is `CONFIRMED_RESOLVED`. One customer can confirm success while another needs support.
+After technical recovery, GoHighLevel tracks affected customers through Service Cases and Conversation AI confirmation. One customer can confirm success while another still needs human support.
 
-The release operation, application health, and business transaction are separate facts:
+**Deployment completion ≠ technical recovery ≠ customer resolution.**
 
-```text
-deployment.completed ≠ health.failed / healthy ≠ checkout.failed / succeeded
+This is a synthetic, single-machine demonstration with real integrations. No real merchant, payment, production deployment, or outbound customer messaging is connected.
+
+## What it demonstrates
+
+- Durable deduplication and many-signal incident correlation.
+- Deterministic severity and validated advisory AI.
+- Expiring, single-use approval bound to exact releases.
+- Business verification and safe provider-failure behavior.
+- n8n customer fanout, effect leases, retries, and remote identity repair.
+- Separate customer status, conservative confirmation, and human follow-up.
+
+Start with the [proof record](docs/phase-4-verification.md), [workflow exports](n8n/workflows), and [five-minute demo](docs/demo-script.md).
+
+## Architecture
+
+```mermaid
+flowchart LR
+    SaaS["RelayCart / FastAPI<br/>releases, health, checkout, orders"] -->|events| IR
+    subgraph N8N["n8n — orchestration"]
+      IR["Intake → correlation → investigation"] --> Gate["Human approval → rollback → verification"]
+      Gate --> Sync["Customer impact sync + feedback poll"]
+    end
+    N8N <-->|durable state + effect leases| DB[(PostgreSQL)]
+    IR -->|bounded evidence| NIM["NVIDIA NIM<br/>advisory JSON only"]
+    NIM -->|validated assessment| IR
+    Gate -->|version-bound action + business checks| SaaS
+    Sync <-->|cases, associations, tags, tasks| Cases
+    subgraph GHL["GoHighLevel — customer operations"]
+      Cases["Synthetic contacts ↔ Service Cases"] --> Native["Native workflows + Conversation AI"]
+      Native --> Human["Customer confirmation / human follow-up"]
+    end
+    Customer["Synthetic Live Chat replies"] --> Native
 ```
 
-No real store, customer, payment provider, or production system is connected. Demo data is synthetic.
+## Signature incident walkthrough
 
-## Start RelayCart
+`v1.8.1` is healthy. Deploying `v1.8.2` completes successfully, but health and checkout fail independently. Three persisted signals correlate to one SEV-2 incident. An operator approves `v1.8.2 → v1.8.1`. n8n verifies release, health, checkout creation, and order read-back before recording `RECOVERED`.
 
-Requirements: Docker Engine and the Docker Compose plugin.
+```mermaid
+flowchart LR
+    D[Deployment] --> S[Three signals] --> I[One incident] --> A[Investigation]
+    A --> H[Exact approval] --> R[Rollback] --> V[Business verification]
+    V -->|four checks pass| T[RECOVERED]
+    V -->|any check fails| F[NEEDS_ATTENTION]
+    T --> C[Customer confirmation]
+    C -->|clear success| Yes[CONFIRMED_RESOLVED]
+    C -->|still broken| No[NEEDS_FOLLOW_UP + task]
+    C -->|silent / ambiguous| Pending[AWAITING_CONFIRMATION]
+```
+
+## n8n technical incident automation
+
+| Export | Responsibility |
+| --- | --- |
+| [IR 01](n8n/workflows/01-event-intake.json) | Validation, uniqueness, correlation, deterministic severity |
+| [IR 02](n8n/workflows/02-evidence-and-nim-investigation.json) | Evidence, NIM request, validation, policy proposal |
+| [IR 04](n8n/workflows/04-approval-remediation.json) | Approval, expiry, replay protection, version-bound rollback |
+| [IR 05](n8n/workflows/05-recovery-verification.json) | Release, health, checkout, order read-back |
+| [GHL 01](n8n/workflows/06-ghl-customer-impact-sync.json) | Fanout, claim/lease, lookup/create/update, association, retry |
+| [GHL 02](n8n/workflows/07-ghl-customer-feedback.json) | Fresh reply validation, outcome, task checks, tag cleanup |
+
+Exports are safe to import: `active` is false or omitted. The demonstrated local instance runs all six workflows active. Exports contain credential ID/name references only. Rebind credentials and instance-specific workflow/GHL IDs before activation; see the [runbook](docs/runbook.md).
+
+## NVIDIA NIM investigation
+
+`openai/gpt-oss-20b` receives bounded evidence with explicit references. n8n validates JSON shape, enums, permitted read checks, and cited IDs. The model has no tools or remediation authority. Deterministic policy decides severity and rollback eligibility.
+
+Provider failure is a tested path, not a reason to bypass approval. [Verification](docs/phase-4-verification.md) distinguishes current observations from historical evaluation. These fixtures do not establish model accuracy.
+
+## Human approval and stale-action safety
+
+The local [approval page](http://127.0.0.1:5678/webhook/phase2/approval/pending) displays the exact action and a 15-minute expiry. Approval is single-use. Deploy `v1.8.3` while an older `v1.8.2 → v1.8.1` proposal is pending: HTTP 409 blocks the old action and preserves the newer release. The API also checks the binding when mutating state.
+
+The approval surface is local and unauthenticated; it demonstrates action safety, not production identity controls.
+
+## GoHighLevel customer operations
+
+**RelayCart Demo** has 30 synthetic contacts, one Service Case object with 14 fields, and a real Contact ↔ Service Case association. Checkout subscriptions select 18 customers; Green Dental is unaffected. Native intake/recovery workflows hand off to the published **Customer Recovery Confirmation** Conversation AI workflow.
+
+Acme becomes `CONFIRMED_RESOLVED`. Ocean becomes `NEEDS_FOLLOW_UP` with one human task while the incident stays `RECOVERED`. Silence and ambiguity stay pending. A result tag alone is insufficient: the latest relevant inbound reply must be newer than recovery and support that outcome. Polling connects GHL to localhost.
+
+## Failure / adversarial proof
+
+| Boundary | Proof |
+| --- | --- |
+| Duplicate storm | 20 concurrent deliveries → one event, one link, one incident |
+| Correlation | Deployment, health, checkout remain distinct in one incident |
+| AI / injection | Timeout, HTTP failure, invalid JSON/enum, E99, hostile logs → no unapproved action |
+| Approval | Reject, expiry, reuse, changed source release block rollback |
+| Recovery | Successful rollback + health green + checkout broken → NEEDS_ATTENTION |
+| GHL | 503 → durable RETRY → scheduled success; missing ID repaired by case key |
+| Customer uncertainty | Silence, ambiguity, stale markers, contradictory replies cannot falsely close |
+| Isolation | Technical regression preserves remote cases and restores workflow states |
+
+See the [observed matrix and reproduction commands](docs/phase-4-verification.md). Live proofs require private credentials; public CI does not.
+
+## Demo screenshots
+
+![RelayCart technical and customer recovery](docs/evidence/phase4-customer-recovery.png)
+
+![Real n8n editor: customer impact orchestration](docs/evidence/phase4-n8n-customer-impact.png)
+
+The [curated evidence index](docs/evidence/README.md) labels real application/editor/GHL captures, rendered graphs, and historical evidence.
+
+## Run locally
+
+Requirements: Docker Engine and Compose; Node.js/Python for public checks; an existing n8n instance for automation.
 
 ```sh
 cp .env.example .env
 docker compose up --build -d
-```
-
-The dashboard/API is at <http://127.0.0.1:8001>. The API listens on container port 8000. PostgreSQL is private to Docker networks and has no host-published port. `.env.example` contains local demo-only credentials; do not reuse them.
-
-## Connect the existing n8n instance
-
-Phase 2 uses the existing local n8n instance. To attach it to the project network and verify its in-network access:
-
-```sh
 ./scripts/connect-n8n
 ```
 
-The shared Docker network is `relaycart-n8n`; RelayCart is addressed there as `http://relaycart-api:8000` and `relaycart-postgres:5432`. The helper starts only this project's API and database services and does not recreate n8n. See [Phase 2 architecture](docs/phase-2-architecture.md) for schema setup and the workflow status.
-
-## Phase 1 demo
-
-1. Open the dashboard. Run a checkout and confirm its order can be read back.
-2. Deploy `v1.8.2`. The deployment operation completes. A subsequent health probe independently reports the application unhealthy, and a checkout independently fails. `/logs` exposes `deployment.completed`, `health.failed`, and `checkout.failed` as distinct events.
-3. Roll back from the dashboard and verify health and checkout again.
-4. Use **Reset demo state** to restore healthy `v1.8.1`.
-
-## Phase 2 status
-
-Phase 2 runs in the existing local n8n instance. Its four workflows ingest and correlate signals, gather bounded evidence, request NVIDIA NIM advice, gate a version-bound rollback on explicit approval, and verify actual checkout recovery. The live happy path, stale approval, and verification-failure paths have been exercised; see [the evidence and limitations](docs/phase-2-verification.md).
-
-The processing path is RelayCart operational events → n8n validation/correlation/evidence gathering → NVIDIA NIM advisory assessment → explicit human approval → version-bound rollback → health, checkout, and order-readback verification. n8n owns the incident process; model advice does not authorize changes. The local approval page is at <http://127.0.0.1:5678/webhook/phase2/approval/pending>. Follow the [Phase 2 demo](docs/phase-2-demo.md) and [AI investigation contract](docs/ai-investigation.md). Workflow exports require each reviewer to bind their own local Postgres/NIM credentials; no credential values are in this repository.
+Open <http://127.0.0.1:8001>; n8n is at <http://localhost:5678>. Inside `relaycart-n8n`, use `http://relaycart-api:8000` and `relaycart-postgres:5432`. PostgreSQL has no published host port. RelayCart works standalone; the complete demo requires the [credential and import setup](docs/runbook.md).
 
 ## Verification
 
-Phase 1 checks:
-
 ```sh
-./scripts/verify
+./scripts/phase4-proof public      # no Docker or credentials
+./scripts/phase4-proof technical   # live regression; snapshots/restores local DB
+./scripts/phase4-proof ghl         # controlled current-case integration tests
 ```
 
-Phase 2 checks (requires the local Compose services and existing n8n instance):
+Original runners `./scripts/verify` and `./scripts/verify-phase2` reset local incident state. Use the Phase 4 technical wrapper to preserve a prepared demo. GHL mode requires the final 18-case state and existing timeout/ambiguous test conversations.
 
-```sh
-./scripts/verify-phase2
-```
+[Public CI](.github/workflows/ci.yml) checks syntax, workflow structure, secret patterns/history, actual feedback-node safety, AI validators, and a zero-request fixture dry run. It does not verify live integrations.
 
-The Phase 2 verification report lists which live workflow scenarios have been exercised and any remaining limitations.
+## Repository structure
 
-## Phase 3 customer operations
+| Path | Inspect for |
+| --- | --- |
+| `app/` | Synthetic SaaS, release safety, incident/customer dashboard |
+| `n8n/workflows/` | Six orchestration graphs; start here for n8n engineering |
+| `n8n/*.sql` | Durable incident and effect constraints |
+| `n8n/evaluation/` | Bounded NIM fixtures and validation |
+| `scripts/`, `tests/` | Reproduction, regression, proof, scoped cleanup |
+| `docs/`, `docs/evidence/` | Runbook, rationale, interview narrative, visual proof |
 
-The two Phase 3 n8n workflows visibly orchestrate customer impact and feedback: Postgres effect claims, per-customer loops, credential-backed HighLevel reads/writes, create/update and outcome branches, association and task checks, and retry persistence. A deterministic PostgreSQL effect ledger retries temporary HighLevel failures without changing the technical incident. RelayCart subscriptions select the 18 checkout customers; Green Dental is the unaffected control. Each affected customer receives one associated HighLevel Service Case per incident.
+## Design decisions
 
-Review the checked-in [Customer Impact Sync graph](docs/evidence/phase3-n8n-customer-impact-graph.png) and [Customer Recovery Feedback graph](docs/evidence/phase3-n8n-customer-feedback-graph.png). These are rendered directly from the workflow exports, not editor UI captures.
+n8n exposes orchestration, policy, branches, and external calls as reviewable workflows. PostgreSQL enforces correctness across retries and concurrent deliveries. FastAPI supplies a deterministic world. GHL owns customer operations. [Design decisions](docs/design-decisions.md) explain the tradeoffs.
 
-The native HighLevel Service Case Intake and Technical Recovery workflows hand a recovered case to the contact-based Customer Recovery Confirmation workflow. Its Conversation AI asks the customer to retry checkout. Confirmation closes only that customer's case; a still-broken reply creates a human follow-up task while the technical incident remains `RECOVERED`. Test chat uses only synthetic Live Chat conversations, never real outbound SMS or email.
+## Known limitations
 
-![Synthetic RelayCart customer recovery: technical incident recovered, Acme confirmed, Ocean needs follow-up, Green Dental unaffected](docs/evidence/phase3-relaycart-customer-recovery.png)
+Single-machine synthetic demo; local n8n and unauthenticated approval UI; no production IAM, real observability, payments, deployment platform, or real customer messaging. GHL uses polling. NIM can fail and requires human judgment. Cross-platform writes are not a distributed transaction: controlled identity-repair/task tests do not prove every crash or provider-consistency scenario. Reply matching is conservative and English-only.
 
-See the [Phase 3 architecture](docs/phase-3-architecture.md), [data model](docs/ghl-data-model.md), [reproduction](docs/phase-3-demo.md), and [verification](docs/phase-3-verification.md). The dashboard at <http://127.0.0.1:8001> displays the customer-recovery projection; GoHighLevel remains the customer-operations system of record.
+The scope prioritizes demonstrable automation engineering over complete production infrastructure.
 
-## Boundaries
+## Handover / documentation
 
-This is a single-machine synthetic demo, not a production incident-management service. It has no production IAM, real customer records, real customer messaging, payment integration, or deployment target. The local approval page is not authenticated for production use. NVIDIA NIM is an advisory investigator only. Log contents are untrusted evidence. A successful rollback response alone does not constitute recovery.
+[Demo script](docs/demo-script.md) · [Runbook](docs/runbook.md) · [Interview guide](docs/interview-guide.md) · [Design decisions](docs/design-decisions.md) · [Phase 4 verification](docs/phase-4-verification.md)
 
-See [Phase 1 architecture](docs/architecture.md), [business scenario](docs/business-scenario.md), [Phase 1 verification](docs/phase-1-verification.md), and the Phase 2 documents linked above.
+Historical acceptance: [Phase 1](docs/phase-1-verification.md), [Phase 2](docs/phase-2-verification.md), [Phase 3](docs/phase-3-verification.md).

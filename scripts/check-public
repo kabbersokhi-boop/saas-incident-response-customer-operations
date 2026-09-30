@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+"""Credential-free repository checks. Report filenames, never matched values."""
+import ast
+import json
+from pathlib import Path
+import re
+import subprocess
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+PATTERNS = [
+    re.compile(rb'\bnvapi-[A-Za-z0-9_-]{20,}'),
+    re.compile(rb'\bpit-[A-Za-z0-9-]{25,}'),
+    re.compile(rb'\beyJ[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}'),
+    re.compile(rb'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----'),
+    re.compile(rb'\bgh[pousr]_[A-Za-z0-9]{30,}'),
+    re.compile(rb'\bgithub_pat_[A-Za-z0-9_]{40,}'),
+]
+PRIVATE_VALUES = []
+if (ROOT / '.env').exists():
+    for line in (ROOT / '.env').read_text().splitlines():
+        key, _, value = line.partition('=')
+        if key in {'GHL_LOCATION_TOKEN', 'NVIDIA_NIM_API_KEY', 'N8N_API_KEY'} and len(value.strip()) > 16:
+            PRIVATE_VALUES.append(value.strip().encode())
+
+def git(*args):
+    return subprocess.check_output(['git', *args], cwd=ROOT)
+
+def scan(label, data):
+    if any(p.search(data) for p in PATTERNS) or any(value in data for value in PRIVATE_VALUES):
+        raise RuntimeError('Potential secret in ' + label + '; inspect privately')
+
+def main():
+    paths = [ROOT / p.decode() for p in git('ls-files', '-z').split(b'\0') if p]
+    # Include proposed new source files before they are staged.
+    paths += [ROOT / p.decode() for p in git('ls-files', '--others', '--exclude-standard', '-z').split(b'\0') if p]
+    for path in paths:
+        data = path.read_bytes()
+        scan(str(path.relative_to(ROOT)), data)
+        if path.suffix == '.py' or (path.parent == ROOT / 'scripts' and data.startswith(b'#!/usr/bin/env python3')):
+            ast.parse(data, filename=str(path))
+        if data.startswith((b'#!/usr/bin/env sh', b'#!/bin/sh')):
+            subprocess.run(['sh', '-n', str(path)], check=True)
+    for path in (ROOT / 'n8n/workflows').glob('*.json'):
+        graph = json.loads(path.read_text())
+        assert graph.get('active') is not True, 'Export must remain safe to import'
+        names = {n['name'] for n in graph['nodes']}
+        assert len(names) == len(graph['nodes'])
+        for source, ports in graph['connections'].items():
+            assert source in names
+            for branches in ports.values():
+                for branch in branches:
+                    assert all(edge['node'] in names for edge in branch)
+        for node in graph['nodes']:
+            for ref in node.get('credentials', {}).values():
+                assert set(ref) <= {'id', 'name'}, 'Credential payload in export'
+            headers = node.get('parameters', {}).get('headerParameters', {}).get('parameters', [])
+            assert not any(h.get('name', '').lower() in {'authorization', 'cookie', 'x-n8n-api-key'} for h in headers)
+    if '--history' in sys.argv:
+        blobs = {}
+        for line in git('rev-list', '--objects', '--all').splitlines():
+            oid, _, name = line.partition(b' ')
+            blobs[oid] = name.decode(errors='replace')
+        kinds = subprocess.check_output(['git', 'cat-file', '--batch-check=%(objectname) %(objecttype)'],
+                                        input=b'\n'.join(blobs)+b'\n', cwd=ROOT)
+        count = 0
+        for line in kinds.splitlines():
+            oid, kind = line.split()
+            if kind == b'blob':
+                scan('history:' + blobs[oid], git('cat-file', 'blob', oid.decode()))
+                count += 1
+        print(f'History pattern scan: {count} unique blobs passed')
+    print(f'Public checks: {len(paths)} files; Python syntax, shell syntax, workflow structure and secret patterns passed')
+
+if __name__ == '__main__':
+    main()

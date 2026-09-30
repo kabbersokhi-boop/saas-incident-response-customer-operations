@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+"""Practical public/live proofs; technical mode preserves the local demo DB."""
+import argparse
+import json
+from pathlib import Path
+import runpy
+import subprocess
+import tempfile
+import time
+
+ROOT = Path(__file__).resolve().parents[1]
+WORKFLOWS = ['lYDxGst3gQbuhRrn','OvrKKVaPxERgQNnr','hRUiukB454KlQ2N6','2jX0JueG8G7HYrot',
+             'lhpMBpbBH3j4BDjm','tjUprwydaLuekcMg']
+# IR 05 has only an Execute Workflow input. It cannot start independently,
+# and this n8n API refuses activation of triggerless sub-workflows. Preserve
+# its stored flag without toggling it; quiesce its parent executions instead.
+SWITCHABLE=[wid for wid in WORKFLOWS if wid!='2jX0JueG8G7HYrot']
+API = runpy.run_path(str(ROOT/'scripts/n8n-workflow-api'))['api']
+
+def run(*args, **kwargs):
+    return subprocess.run(args, cwd=ROOT, check=True, **kwargs)
+
+def inventory():
+    return subprocess.check_output(['docker','compose','exec','-T','api','python',
+        'scripts/phase4-ghl-proof','--inventory'],cwd=ROOT)
+
+def quiesce():
+    deadline=time.monotonic()+180
+    while time.monotonic()<deadline:
+        busy=False
+        for wid in WORKFLOWS:
+            executions=API('GET',f'/executions?workflowId={wid}&limit=20') or {}
+            busy |= any(e['status'] in ('running','waiting','new') for e in executions.get('data',[]))
+        if not busy: return
+        time.sleep(2)
+    raise RuntimeError('RelayCart executions did not quiesce; do not restore while writers remain')
+
+def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('mode',choices=['public','technical','ghl'],default='public',nargs='?')
+    args=parser.parse_args()
+    run('python3','scripts/check-public','--history')
+    run('node','--test','n8n/evaluation/test_eval.mjs','tests/workflow-safety.test.mjs')
+    run('node','n8n/evaluation/run_eval.mjs','--dry-run')
+    if args.mode=='public': return
+    if args.mode=='ghl':
+        run('docker','compose','exec','-T','api','python','scripts/phase4-ghl-proof')
+        run('docker','compose','exec','-T','api','python','scripts/phase3-verify-ghl')
+        return
+    states={wid: bool(API('GET',f'/workflows/{wid}')['active']) for wid in WORKFLOWS}
+    before=inventory()
+    # Backup is private and never stored in the repository. Quiesce writers
+    # before both snapshot and restoration; only this project's six workflows.
+    directory=tempfile.mkdtemp(prefix='relaycart-phase4-')
+    if directory:
+        backup=Path(directory)/'demo.dump'
+        backed_up=False
+        try:
+            for wid in SWITCHABLE:
+                if states[wid]: API('POST',f'/workflows/{wid}/deactivate')
+            quiesce()
+            run('docker','compose','stop','api')
+            with backup.open('wb') as stream:
+                run('docker','compose','exec','-T','postgres','pg_dump','-U','relaycart','-d','relaycart','-Fc',stdout=stream)
+            backed_up=True
+            run('docker','compose','up','-d','--build','api')
+            for wid in SWITCHABLE[:3]:
+                if states[wid]: API('POST',f'/workflows/{wid}/activate')
+            run('./scripts/verify-phase2')
+            run('docker','compose','exec','-T','api','pytest','-q','-s','tests/test_phase4_n8n.py')
+        finally:
+            for wid in SWITCHABLE: API('POST',f'/workflows/{wid}/deactivate')
+            quiesce()
+            if backed_up:
+                run('docker','compose','stop','api')
+                with backup.open('rb') as stream:
+                    run('docker','compose','exec','-T','postgres','pg_restore','-U','relaycart','-d','relaycart',
+                        '--clean','--if-exists','--single-transaction',stdin=stream)
+                run('docker','compose','up','-d','api')
+            for wid in SWITCHABLE:
+                if states[wid]: API('POST',f'/workflows/{wid}/activate')
+        after=inventory()
+        assert json.loads(before)==json.loads(after), 'Phase 2 polluted or changed remote GHL cases'
+        assert all(bool(API('GET',f'/workflows/{wid}')['active'])==states[wid] for wid in WORKFLOWS)
+        backup.unlink()
+        Path(directory).rmdir()
+        print('PROOF isolation: exact remote inventory unchanged; six prior active states restored; local DB restored')
+
+if __name__=='__main__': main()

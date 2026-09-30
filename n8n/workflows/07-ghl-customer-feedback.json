@@ -157,7 +157,7 @@
           "conditions": [
             {
               "id": "e798a201-ec8f-57b1-8c7f-08b9dcd98cc9",
-              "leftValue": "={{ !!$json.outcome }}",
+              "leftValue": "={{ $json.tags.length > 0 }}",
               "rightValue": true,
               "operator": {
                 "type": "boolean",
@@ -390,7 +390,7 @@
     {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const cutoff=Date.parse($('One Contact At A Time').item.json.recovered_at); const outcome=$('Interpret Only RelayCart Outcomes').item.json.outcome; const messages=$json.body?.messages?.messages||[]; const fresh=messages.some(m=>m.direction==='inbound' && Date.parse(m.dateAdded)>cutoff && !String(m.body||'').startsWith('Synthetic RelayCart checkout recovery test') && (outcome==='CONFIRMED_RESOLVED' ? /\\b(yes|works?|working|fixed|succeeds?)\\b/i.test(m.body||'') : /\\b(no|still|broken|fail(?:ing|ed)?|errors?)\\b/i.test(m.body||''))); return {json:{fresh}};"
+        "jsCode": "const cutoff=Date.parse($('One Contact At A Time').item.json.recovered_at); const outcome=$('Interpret Only RelayCart Outcomes').item.json.outcome; const messages=$json.body?.messages?.messages||[]; const latest=messages.filter(m=>m.direction==='inbound' && Date.parse(m.dateAdded)>cutoff && !String(m.body||'').startsWith('Synthetic RelayCart checkout recovery test')) .sort((a,b)=>Date.parse(b.dateAdded)-Date.parse(a.dateAdded))[0]; const body=String(latest?.body||'').trim(); const uncertain=/\\?|\\b(not yet|haven.t|have not|unable|not sure|don.t know|do not know|not tested|not tried|maybe|might|can.t test|cannot test)\\b/i.test(body); const negative=/\\b(no|broken|fail(?:s|ing|ed|ure)?|errors?)\\b|\\b(?:not|isn.t|is not|doesn.t|does not)\\s+(?:work(?:s|ing)?|fixed|resolved)\\b/i.test(body); const positive=/^(?:yes[,!.\\s]+)?(?:it|checkout|the checkout|relaycart checkout|everything)\\s+(?:(?:is now|is|now)\\s+)?(?:works|working|fixed|succeeds|resolved)\\b/i.test(body); const fresh=Number.isFinite(cutoff) && !!outcome && !uncertain && (outcome==='CONFIRMED_RESOLVED' ? positive&&!negative : negative); return {json:{fresh}};"
       },
       "id": "f3b694a4-9698-5f00-84b0-de561d28ba0f",
       "name": "Require Fresh Matching Customer Reply",
@@ -778,7 +778,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO ghl_customer_feedback(incident_id,customer_key,ghl_record_id,outcome,occurred_at)\nVALUES($1,$2,$3,$4,NOW()) ON CONFLICT(incident_id,customer_key,outcome) DO NOTHING\nRETURNING incident_id,customer_key,outcome;",
+        "query": "WITH saved AS (\nINSERT INTO ghl_customer_feedback(incident_id,customer_key,ghl_record_id,outcome,occurred_at)\nVALUES($1,$2,$3,$4,NOW()) ON CONFLICT(incident_id,customer_key,outcome) DO NOTHING\nRETURNING incident_id,customer_key,outcome)\nSELECT incident_id,customer_key,outcome FROM saved\nUNION ALL SELECT incident_id,customer_key,outcome FROM ghl_customer_feedback\nWHERE incident_id=$1 AND customer_key=$2 AND outcome=$4\n AND NOT EXISTS(SELECT 1 FROM saved);",
         "options": {
           "queryReplacement": "={{ [$('One Contact At A Time').item.json.incident_id,$('One Contact At A Time').item.json.customer_key,$('One Contact At A Time').item.json.ghl_record_id,$('Interpret Only RelayCart Outcomes').item.json.outcome] }}"
         }

@@ -26,7 +26,7 @@ This procedure verifies only the local synthetic demo. It does not validate a pr
 
 - `docker compose up --build -d` started `api` and `postgres`; both reported healthy at the baseline.
 - `./scripts/verify` reported **4 passed, 0 failed, 0 skipped** after the final build.
-- A browser-driven run exercised the UI controls for healthy checkout, v1.8.2 deployment, failed checkout, rollback, recovered checkout/order readback, and reset without JavaScript errors. Screenshots: [healthy](evidence/healthy.png), [degraded](evidence/degraded.png), [recovered](evidence/recovered.png).
+- A browser-driven run exercised the UI controls for healthy checkout, v1.8.2 deployment, failed checkout, rollback, recovered checkout/order readback, and reset without JavaScript errors. The original screenshots remain in Git history before Phase 4; current, accurately labeled captures are in the [curated evidence index](evidence/README.md).
 - While v1.8.2 was active, the deploy endpoint reported `completed`; `/health` and `/demo/state` independently reported `unhealthy`, checkout returned HTTP 503, and `/logs` contained distinct `deployment.completed`, `health.failed`, and `checkout.failed` events. Health polling produced only one health failure event for the deployment. Docker marked the API container unhealthy; it returned to healthy after rollback.
 - PostgreSQL contained 30 customers, 30 plans, 51 customer-service links (18 checkout, 16 billing, 17 notification), 20 historical deployments, 10 historical incidents, and 20 historical service cases. No orphan service links were found.
 - Reset restored v1.8.1, the 20-deployment baseline, and a clean demo order state.

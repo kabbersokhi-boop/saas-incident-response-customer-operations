@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""Run inside API container. Bounded proofs on existing synthetic cases only."""
+import argparse
+import json
+import os
+import time
+import httpx
+
+from app.customer_ops import OBJECT, _request
+from app.db import get_connection
+
+LOCATION = 'CP8Flhg4iyKzzm6vlOgu'
+MARKERS = ['relaycart-confirmed-resolved', 'relaycart-needs-follow-up']
+
+def query(sql, params=()):
+    with get_connection() as conn:
+        cursor=conn.execute(sql, params)
+        return cursor.fetchall() if cursor.description else []
+
+def wait(check, label, timeout=180):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        result = check()
+        if result:
+            return result
+        time.sleep(2)
+    raise RuntimeError('Timed out: ' + label)
+
+def inventory(client):
+    result = _request(client, 'POST', f'/objects/{OBJECT}/records/search', json={
+        'locationId': LOCATION, 'page': 1, 'pageLimit': 100, 'searchAfter': []})
+    rows = result.get('records', [])
+    if len(rows) >= 100:
+        raise RuntimeError('Audit page boundary reached; do not assume full inventory')
+    assert all(r['properties'].get('demo_record') == 'yes' for r in rows)
+    return sorted((r['id'], r['properties']['case_key'], r['properties'].get('technical_status'),
+                   r['properties'].get('customer_status')) for r in rows)
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--inventory', action='store_true')
+    args = parser.parse_args()
+    assert os.environ['GHL_LOCATION_ID'] == LOCATION
+    with httpx.Client(base_url='https://services.leadconnectorhq.com', timeout=20, trust_env=False,
+        headers={'Authorization': 'Bearer ' + os.environ['GHL_LOCATION_TOKEN'], 'Version': 'v3'}) as client:
+        if args.inventory:
+            print(json.dumps(inventory(client)))
+            return
+        rows = query("""SELECT e.*,gc.contact_id FROM ghl_effects e JOIN ghl_contacts gc USING(customer_key)
+            WHERE incident_id=(SELECT incident_id FROM ir_incidents WHERE environment='production-demo'
+            ORDER BY opened_at DESC LIMIT 1)""")
+        assert len(rows) == 18 and all(r['status']=='SUCCEEDED' for r in rows)
+        mapped = {r['customer_key']:r for r in rows}
+        incident = rows[0]['incident_id']
+        before = inventory(client)
+        assert len(before) == 18
+        coffee = mapped['coffee-club-03']
+        mosaic = mapped['mosaic-works-07']
+        # Release one existing effect; the manual fixture must claim it before
+        # the schedule. Retry if the schedule wins, without creating any record.
+        for _ in range(3):
+            query("UPDATE ghl_effects SET status='PENDING',next_attempt_at=NOW() WHERE effect_id=%s", (mosaic['effect_id'],))
+            httpx.post('http://n8n:5678/webhook/relaycart/customer-impact/sync?simulate_503=1',timeout=20).raise_for_status()
+            time.sleep(4)
+            current = query('SELECT status,last_error,attempt_count FROM ghl_effects WHERE effect_id=%s', (mosaic['effect_id'],))[0]
+            if current['status']=='RETRY':break
+        assert current['status']=='RETRY' and '503' in current['last_error']
+        assert query('SELECT state FROM ir_incidents WHERE incident_id=%s',(incident,))[0]['state']=='RECOVERED'
+        print('PROOF GHL_503: durable RETRY; HTTP 503 persisted; technical=RECOVERED',flush=True)
+        wait(lambda: query("SELECT 1 FROM ghl_effects WHERE effect_id=%s AND status='SUCCEEDED'",(mosaic['effect_id'],)), 'scheduled GHL retry')
+        print('PROOF GHL_retry: scheduled reconciliation SUCCEEDED',flush=True)
+        query("UPDATE ghl_effects SET ghl_record_id=NULL,status='PENDING',next_attempt_at=NOW() WHERE effect_id=%s",(coffee['effect_id'],))
+        httpx.post('http://n8n:5678/webhook/relaycart/customer-impact/sync',timeout=20).raise_for_status()
+        wait(lambda: query("SELECT 1 FROM ghl_effects WHERE effect_id=%s AND status='SUCCEEDED' AND ghl_record_id=%s",(coffee['effect_id'],coffee['ghl_record_id'])), 'remote ID repair')
+        assert inventory(client)==before
+        print('PROOF lost_ack: NULL local ID repaired to same remote ID; inventory unchanged',flush=True)
+        for key,tag in [('coffee-club-03','relaycart-confirmed-resolved'),
+                        ('bookbox-06','relaycart-confirmed-resolved'),
+                        ('ocean-apparel-02','relaycart-needs-follow-up'),
+                        ('acme-bikes','relaycart-confirmed-resolved')]:
+            _request(client,'POST',f"/contacts/{mapped[key]['contact_id']}/tags",json={'tags':[tag]})
+        # Current Coffee timeout and BookBox ambiguous cases must remain pending.
+        for key in ('coffee-club-03','bookbox-06'):
+            row=mapped[key]
+            wait(lambda: not set(_request(client,'GET',f"/contacts/{row['contact_id']}").get('contact',{}).get('tags',[])).intersection(MARKERS), 'stale marker cleanup')
+            assert not query('SELECT 1 FROM ghl_customer_feedback WHERE incident_id=%s AND customer_key=%s',(incident,key))
+            record=_request(client,'GET',f"/objects/{OBJECT}/records/{row['ghl_record_id']}",params={'locationId':LOCATION})
+            assert record.get('record',record)['properties']['customer_status']=='AWAITING_CONFIRMATION'
+        print('PROOF stale_marker_and_ambiguity: markers cleared; no feedback; both cases AWAITING_CONFIRMATION',flush=True)
+        ocean=mapped['ocean-apparel-02']
+        wait(lambda: 'relaycart-needs-follow-up' not in _request(client,'GET',f"/contacts/{ocean['contact_id']}").get('contact',{}).get('tags',[]), 'duplicate feedback cleanup')
+        tasks=_request(client,'GET',f"/contacts/{ocean['contact_id']}/tasks").get('tasks',[])
+        assert sum(t.get('title')==f'RelayCart follow-up · {incident}' for t in tasks)==1
+        assert len(query('SELECT 1 FROM ghl_customer_feedback WHERE incident_id=%s AND customer_key=%s',(incident,'ocean-apparel-02')))==1
+        assert inventory(client)==before
+        assert query('SELECT state FROM ir_incidents WHERE incident_id=%s',(incident,))[0]['state']=='RECOVERED'
+        print('PROOF customer_still_broken_replay: one task; one feedback; tag cleared; technical=RECOVERED',flush=True)
+        acme=mapped['acme-bikes']
+        wait(lambda: 'relaycart-confirmed-resolved' not in _request(client,'GET',f"/contacts/{acme['contact_id']}").get('contact',{}).get('tags',[]), 'positive feedback replay cleanup')
+        assert len(query('SELECT 1 FROM ghl_customer_feedback WHERE incident_id=%s AND customer_key=%s',(incident,'acme-bikes')))==1
+        assert inventory(client)==before
+        print('PROOF positive_replay: fresh explicit success accepted; one feedback; tag cleared',flush=True)
+        for row in rows:
+            tags=_request(client,'GET',f"/contacts/{row['contact_id']}").get('contact',{}).get('tags',[])
+            assert not set(tags).intersection(MARKERS)
+        print('PROOF final_inventory: 18 same remote cases; no transient outcome markers',flush=True)
+
+if __name__=='__main__':
+    main()

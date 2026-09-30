@@ -23,6 +23,9 @@ def main() -> None:
         control = conn.execute("""SELECT count(*) AS cases FROM ghl_effects
             WHERE incident_id=%s AND customer_key='green-dental-21'""",
             (incident_id,)).fetchone()["cases"]
+        mapped_ids = {r["contact_id"] for r in conn.execute(
+            "SELECT contact_id FROM ghl_contacts WHERE location_id=%s",
+            (os.environ["GHL_LOCATION_ID"],)).fetchall()}
     if len(rows) != 18 or control:
         raise RuntimeError("Expected 18 checkout cases and no Green Dental case")
     location = os.environ["GHL_LOCATION_ID"]
@@ -30,6 +33,17 @@ def main() -> None:
                       trust_env=False, headers={"Authorization": "Bearer " + os.environ["GHL_LOCATION_TOKEN"],
                                                 "Version": "v3", "Accept": "application/json"}) as client:
         control_key = f"SC-{incident_id}-green-dental-21"
+        inventory = _request(client, "POST", f"/objects/{OBJECT}/records/search", json={
+            "locationId": location, "page": 1, "pageLimit": 100, "searchAfter": []}).get("records", [])
+        if len(inventory) != 18 or any(
+                r.get("properties", {}).get("incident_id") != incident_id or
+                r.get("properties", {}).get("demo_record") != "yes" for r in inventory):
+            raise RuntimeError("Remote inventory must be exactly 18 current synthetic cases")
+        contacts = _request(client, "GET", "/contacts/", params={"locationId": location, "limit": 100},
+                            headers={"Version": "2021-07-28"}).get("contacts", [])
+        mapped_contacts = [c for c in contacts if c.get("id") in mapped_ids]
+        if len(mapped_contacts) != 30 or any(not str(c.get("email", "")).endswith("@example.test") or c.get("phone") for c in mapped_contacts):
+            raise RuntimeError("Expected 30 mapped synthetic contacts without phone numbers")
         control_search = _request(client, "POST", f"/objects/{OBJECT}/records/search", json={
             "locationId": location, "page": 1, "pageLimit": 20,
             "query": control_key, "searchAfter": []})
@@ -43,6 +57,8 @@ def main() -> None:
             record = case.get("record", case)
             props = record.get("properties", {})
             technical = props.get("technical_status")
+            if technical != "RECOVERED":
+                raise RuntimeError("Current Service Case technical status is not RECOVERED")
             customer = props.get("customer_status")
             case_key = f"SC-{row['incident_id']}-{row['customer_key']}"
             if props.get("case_key") != case_key or props.get("demo_record") != "yes":
@@ -64,6 +80,10 @@ def main() -> None:
                       "case=" + row["ghl_record_id"], "tasks=" + str(len(matching_tasks)))
             time.sleep(0.4)
         print("cases", len(rows), "green_dental_cases", control, "status_counts", statuses)
+        if statuses != {"CONFIRMED_RESOLVED": 1, "AWAITING_CONFIRMATION": 16, "NEEDS_FOLLOW_UP": 1}:
+            raise RuntimeError("Final customer status split differs from 16/1/1")
+        print("remote_inventory=18 mapped_synthetic_contacts=30 mapped_phones=0 unmapped_contacts=" +
+              str(len(contacts)-len(mapped_contacts)) + " audit=PASS")
 
 
 if __name__ == "__main__":

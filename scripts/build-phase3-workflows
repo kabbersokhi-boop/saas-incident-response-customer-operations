@@ -223,7 +223,7 @@ ORDER BY e.customer_key;"""
           "const yes=tags.includes('relaycart-confirmed-resolved'); "
           "const no=tags.includes('relaycart-needs-follow-up'); "
           "return {json:{outcome:yes&&!no?'CONFIRMED_RESOLVED':no&&!yes?'NEEDS_FOLLOW_UP':null, tags:tags.filter(t=>t==='relaycart-confirmed-resolved'||t==='relaycart-needs-follow-up')}};"}, 320, -100)
-    g.decision("Outcome Marker Present?", "={{ !!$json.outcome }}", 560, -100)
+    g.decision("Outcome Marker Present?", "={{ $json.tags.length > 0 }}", 560, -100)
     g.http("Find Synthetic Contact Conversation", "GET", BASE + "/conversations/search", 800, -140,
            params=[{"name": "locationId", "value": LOCATION},
                    {"name": "contactId", "value": "={{ $('One Contact At A Time').item.json.contact_id }}"},
@@ -238,10 +238,15 @@ ORDER BY e.customer_key;"""
           "const cutoff=Date.parse($('One Contact At A Time').item.json.recovered_at); "
           "const outcome=$('Interpret Only RelayCart Outcomes').item.json.outcome; "
           "const messages=$json.body?.messages?.messages||[]; "
-          "const fresh=messages.some(m=>m.direction==='inbound' && Date.parse(m.dateAdded)>cutoff && "
-          "!String(m.body||'').startsWith('Synthetic RelayCart checkout recovery test') && "
-          "(outcome==='CONFIRMED_RESOLVED' ? /\\b(yes|works?|working|fixed|succeeds?)\\b/i.test(m.body||'') : "
-          "/\\b(no|still|broken|fail(?:ing|ed)?|errors?)\\b/i.test(m.body||''))); "
+          "const latest=messages.filter(m=>m.direction==='inbound' && Date.parse(m.dateAdded)>cutoff && "
+          "!String(m.body||'').startsWith('Synthetic RelayCart checkout recovery test')) "
+          ".sort((a,b)=>Date.parse(b.dateAdded)-Date.parse(a.dateAdded))[0]; "
+          "const body=String(latest?.body||'').trim(); "
+          "const uncertain=/\\?|\\b(not yet|haven.t|have not|unable|not sure|don.t know|do not know|not tested|not tried|maybe|might|can.t test|cannot test)\\b/i.test(body); "
+          "const negative=/\\b(no|broken|fail(?:s|ing|ed|ure)?|errors?)\\b|\\b(?:not|isn.t|is not|doesn.t|does not)\\s+(?:work(?:s|ing)?|fixed|resolved)\\b/i.test(body); "
+          "const positive=/^(?:yes[,!.\\s]+)?(?:it|checkout|the checkout|relaycart checkout|everything)\\s+(?:(?:is now|is|now)\\s+)?(?:works|working|fixed|succeeds|resolved)\\b/i.test(body); "
+          "const fresh=Number.isFinite(cutoff) && !!outcome && !uncertain && "
+          "(outcome==='CONFIRMED_RESOLVED' ? positive&&!negative : negative); "
           "return {json:{fresh}};"}, 2000, -220)
     g.decision("Fresh Reply Supports Marker?", "={{ $json.fresh }}", 2240, -220)
     g.decision("Confirmed Working?", "={{ $('Interpret Only RelayCart Outcomes').item.json.outcome === 'CONFIRMED_RESOLVED' }}", 2480, -180)
@@ -260,9 +265,14 @@ ORDER BY e.customer_key;"""
            "={{ { properties: $('Interpret Only RelayCart Outcomes').item.json.outcome==='CONFIRMED_RESOLVED' ? {customer_status:'CONFIRMED_RESOLVED',customer_confirmed_at:new Date().toISOString().slice(0,10)} : {customer_status:'NEEDS_FOLLOW_UP'} } }}",
            [{"name": "locationId", "value": LOCATION}])
     g.decision("Case Outcome Saved?", "={{ $json.statusCode >= 200 && $json.statusCode < 300 }}", 4400, 0)
-    feedback = """INSERT INTO ghl_customer_feedback(incident_id,customer_key,ghl_record_id,outcome,occurred_at)
+    feedback = """WITH saved AS (
+INSERT INTO ghl_customer_feedback(incident_id,customer_key,ghl_record_id,outcome,occurred_at)
 VALUES($1,$2,$3,$4,NOW()) ON CONFLICT(incident_id,customer_key,outcome) DO NOTHING
-RETURNING incident_id,customer_key,outcome;"""
+RETURNING incident_id,customer_key,outcome)
+SELECT incident_id,customer_key,outcome FROM saved
+UNION ALL SELECT incident_id,customer_key,outcome FROM ghl_customer_feedback
+WHERE incident_id=$1 AND customer_key=$2 AND outcome=$4
+ AND NOT EXISTS(SELECT 1 FROM saved);"""
     g.postgres("Persist Customer Feedback Separately", feedback, 4640, -100,
                "={{ [$('One Contact At A Time').item.json.incident_id,$('One Contact At A Time').item.json.customer_key,$('One Contact At A Time').item.json.ghl_record_id,$('Interpret Only RelayCart Outcomes').item.json.outcome] }}")
     g.http("Clear Only Transient Outcome Tags", "DELETE",
