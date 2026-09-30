@@ -28,10 +28,9 @@ def main() -> None:
         row, form = production_proposal(client)
         incident_id = row["incident_id"]
         print(f"incident={incident_id} state=WAITING_FOR_APPROVAL")
+        client.post("http://n8n:5678/webhook/relaycart/customer-impact/sync").raise_for_status()
         deadline = time.monotonic() + 240
         while time.monotonic() < deadline:
-            response = client.post("/customer-ops/sync")
-            response.raise_for_status()
             with get_connection() as conn:
                 result = conn.execute("""SELECT count(*) AS total,
                     count(*) FILTER (WHERE status='SUCCEEDED') AS succeeded
@@ -53,10 +52,11 @@ def main() -> None:
             time.sleep(1)
         else:
             raise RuntimeError(f"Technical recovery did not complete: {state}")
-        deadline = time.monotonic() + 120
+        client.post("http://n8n:5678/webhook/relaycart/customer-impact/sync").raise_for_status()
+        # Three customer effects per 30-second schedule can take over two
+        # minutes for an 18-case technical-state refresh.
+        deadline = time.monotonic() + 300
         while time.monotonic() < deadline:
-            response = client.post("/customer-ops/sync")
-            response.raise_for_status()
             with get_connection() as conn:
                 result = conn.execute("""SELECT count(*) AS total,
                     count(*) FILTER (WHERE status='SUCCEEDED' AND

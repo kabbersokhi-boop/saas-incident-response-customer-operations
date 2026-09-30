@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS ghl_effects (
     customer_key TEXT NOT NULL REFERENCES customers(slug),
     effect_type TEXT NOT NULL CHECK (effect_type = 'service_case'),
     desired_state JSONB NOT NULL CHECK (jsonb_typeof(desired_state) = 'object'),
-    status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','RETRY','SUCCEEDED')),
+    status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','PROCESSING','RETRY','SUCCEEDED')),
     attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
     next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     ghl_record_id TEXT,
@@ -22,6 +22,12 @@ CREATE TABLE IF NOT EXISTS ghl_effects (
     UNIQUE (incident_id, customer_key, effect_type)
 );
 CREATE INDEX IF NOT EXISTS ghl_effects_due_idx ON ghl_effects (next_attempt_at) WHERE status <> 'SUCCEEDED';
+
+-- Existing Phase 3 installations used a three-state check. Replacing only this
+-- constraint keeps all mapped contacts, effects, feedback, and GHL records intact.
+ALTER TABLE ghl_effects DROP CONSTRAINT IF EXISTS ghl_effects_status_check;
+ALTER TABLE ghl_effects ADD CONSTRAINT ghl_effects_status_check
+    CHECK (status IN ('PENDING','PROCESSING','RETRY','SUCCEEDED'));
 
 CREATE TABLE IF NOT EXISTS ghl_customer_feedback (
     incident_id TEXT NOT NULL REFERENCES ir_incidents(incident_id) ON DELETE CASCADE,

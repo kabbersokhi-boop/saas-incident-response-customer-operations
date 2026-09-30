@@ -1,0 +1,322 @@
+#!/usr/bin/env python3
+"""Generate the two reviewable n8n Phase 3 workflow exports (no secrets)."""
+
+import json
+from pathlib import Path
+from uuid import uuid5, NAMESPACE_URL
+
+ROOT = Path(__file__).resolve().parents[1] / "n8n" / "workflows"
+LOCATION = "CP8Flhg4iyKzzm6vlOgu"
+OBJECT = "custom_objects.relaycart_service_case"
+ASSOCIATION = "6abb11b64427829e84164de5"
+BASE = "https://services.leadconnectorhq.com"
+PG = {"postgres": {"id": "dJp5v4e6qmyffUpN", "name": "RelayCart Phase 2 Postgres"}}
+GHL = {"httpHeaderAuth": {"id": "EvW1batWWwk4xdQV", "name": "RelayCart Demo HighLevel PIT"}}
+
+
+class Graph:
+    def __init__(self, name):
+        self.name, self.nodes, self.connections = name, [], {}
+
+    def add(self, name, typ, params, x, y, *, creds=None, error=None, always=False):
+        node = {"parameters": params, "id": str(uuid5(NAMESPACE_URL, self.name + "/" + name)),
+                "name": name, "type": "n8n-nodes-base." + typ,
+                "typeVersion": {"postgres": 2.7, "httpRequest": 4.2, "if": 2.2,
+                                "splitInBatches": 3, "code": 2, "wait": 1.1,
+                                "scheduleTrigger": 1.2, "webhook": 2, "set": 3.4}.get(typ, 1),
+                "position": [x, y]}
+        if creds:
+            node["credentials"] = creds
+        if error:
+            node["onError"] = error
+        if always:
+            node["alwaysOutputData"] = True
+        self.nodes.append(node)
+        return name
+
+    def link(self, source, target, branch=0):
+        outputs = self.connections.setdefault(source, {"main": []})["main"]
+        while len(outputs) <= branch:
+            outputs.append([])
+        outputs[branch].append({"node": target, "type": "main", "index": 0})
+
+    def postgres(self, name, sql, x, y, replacement=None):
+        opts = {"queryReplacement": replacement} if replacement else {}
+        return self.add(name, "postgres", {"operation": "executeQuery", "query": sql,
+                                            "options": opts}, x, y, creds=PG)
+
+    def http(self, name, method, url, x, y, body=None, params=None):
+        p = {"method": method, "url": url, "authentication": "genericCredentialType",
+             "genericAuthType": "httpHeaderAuth", "sendHeaders": True,
+             "headerParameters": {"parameters": [{"name": "Version", "value": "v3"}]},
+             "options": {"timeout": 20000, "response": {"response": {
+                 "fullResponse": True, "neverError": True, "responseFormat": "json"}}}}
+        if body is not None:
+            p.update({"sendBody": True, "contentType": "json", "specifyBody": "json", "jsonBody": body})
+        if params:
+            p.update({"sendQuery": True, "queryParameters": {"parameters": params}})
+        return self.add(name, "httpRequest", p, x, y, creds=GHL,
+                        error="continueRegularOutput")
+
+    def decision(self, name, expression, x, y):
+        return self.add(name, "if", {"conditions": {"options": {"caseSensitive": True,
+                        "leftValue": "", "typeValidation": "strict", "version": 2},
+                        "conditions": [{"id": str(uuid5(NAMESPACE_URL, name)),
+                                        "leftValue": expression, "rightValue": True,
+                                        "operator": {"type": "boolean", "operation": "true"}}],
+                        "combinator": "and"}, "options": {}}, x, y)
+
+    def result(self):
+        return {"name": self.name, "nodes": self.nodes, "connections": self.connections,
+                "settings": {"executionOrder": "v1", "timezone": "UTC",
+                             "saveExecutionProgress": True}, "active": False}
+
+
+def build_impact():
+    g = Graph("GHL 01 - Customer Impact Sync")
+    g.add("Reconcile Every 30 Seconds", "scheduleTrigger",
+          {"rule": {"interval": [{"field": "seconds", "secondsInterval": 30}]}}, -1100, -100)
+    g.add("Manual Reconciliation", "webhook",
+          {"httpMethod": "POST", "path": "relaycart/customer-impact/sync",
+           "responseMode": "onReceived", "options": {}}, -1100, 100)
+    g.nodes[-1]["webhookId"] = "relaycart-customer-impact-sync"
+    enqueue = """INSERT INTO ghl_effects(effect_id,incident_id,customer_key,effect_type,desired_state)
+SELECT 'service-case:'||i.incident_id||':'||c.slug,i.incident_id,c.slug,'service_case',
+ jsonb_build_object('technical_status',i.state,'severity',i.severity,
+ 'impact_summary',coalesce(i.summary,'RelayCart service incident'),
+ 'revision',i.revision,'updated_at',i.updated_at,'recovered_at',i.recovered_at)
+FROM ir_incidents i JOIN services s ON s.service_key=i.service
+JOIN customer_service_subscriptions css ON css.service_id=s.id AND css.status='active'
+JOIN customers c ON c.id=css.customer_id
+JOIN ghl_contacts gc ON gc.customer_key=c.slug AND gc.location_id='""" + LOCATION + """'
+WHERE i.environment='production-demo' AND i.state<>'RESOLVED'
+ON CONFLICT(effect_id) DO UPDATE SET desired_state=EXCLUDED.desired_state,
+ status='PENDING',next_attempt_at=NOW(),updated_at=NOW()
+WHERE ghl_effects.desired_state IS DISTINCT FROM EXCLUDED.desired_state
+  AND ghl_effects.status<>'PROCESSING';"""
+    g.postgres("Enqueue Subscribed Customers Atomically", enqueue, -820, 0)
+    claim = """WITH due AS (
+ SELECT effect_id FROM ghl_effects
+ WHERE (status IN ('PENDING','RETRY','PROCESSING') AND next_attempt_at<=NOW())
+ ORDER BY next_attempt_at,created_at,customer_key LIMIT 3 FOR UPDATE SKIP LOCKED
+), claimed AS (
+ UPDATE ghl_effects e SET status='PROCESSING',next_attempt_at=NOW()+interval '3 minutes',updated_at=NOW()
+ FROM due WHERE e.effect_id=due.effect_id
+ RETURNING e.effect_id,e.incident_id,e.customer_key,e.desired_state,e.ghl_record_id
+)
+SELECT * FROM claimed ORDER BY customer_key;"""
+    g.postgres("Claim Three Due Effects", claim, -540, 0)
+    g.add("One Customer At A Time", "splitInBatches", {"batchSize": 1, "options": {}}, -280, 0)
+    load = """SELECT e.effect_id,e.incident_id,e.customer_key,e.ghl_record_id,gc.contact_id,
+ 'SC-'||e.incident_id||'-'||e.customer_key AS case_key,
+ jsonb_strip_nulls(jsonb_build_object(
+ 'case_key','SC-'||e.incident_id||'-'||e.customer_key,
+ 'incident_id',e.incident_id,'customer_key',e.customer_key,'service',i.service,
+ 'severity',e.desired_state->>'severity',
+ 'impact_summary',left(e.desired_state->>'impact_summary',1000),
+ 'technical_status',e.desired_state->>'technical_status',
+ 'last_technical_update',left(e.desired_state->>'updated_at',10),
+ 'recovery_verified_at',left(e.desired_state->>'recovered_at',10),
+ 'sync_revision',(e.desired_state->>'revision')::integer,'demo_record','yes')) AS properties,
+ i.opened_at::date AS affected_since
+FROM ghl_effects e JOIN ir_incidents i ON i.incident_id=e.incident_id
+JOIN ghl_contacts gc ON gc.customer_key=e.customer_key AND gc.location_id='""" + LOCATION + """'
+WHERE e.effect_id=$1 AND e.status='PROCESSING';"""
+    g.postgres("Load Incident And Contact Mapping", load, 0, 0,
+               "={{ [$json.effect_id] }}")
+    g.decision("Controlled 503 Fixture?",
+               "={{ $('Manual Reconciliation').isExecuted && $('Manual Reconciliation').first().json.query?.simulate_503 === '1' }}", 140, 160)
+    g.add("Simulate HighLevel HTTP 503", "set", {"assignments": {"assignments": [
+          {"id": "controlled-503", "name": "statusCode", "value": 503, "type": "number"}]},
+          "options": {}}, 360, 180)
+    g.http("Search Case By Deterministic Key", "POST", BASE + "/objects/" + OBJECT + "/records/search",
+           360, 0, "={{ { locationId: '" + LOCATION + "', page: 1, pageLimit: 20, query: $('Load Incident And Contact Mapping').item.json.case_key, searchAfter: [] } }}")
+    g.decision("Case Search Succeeded?", "={{ $json.statusCode >= 200 && $json.statusCode < 300 }}", 540, 0)
+    g.add("Exact Case Key Match", "code", {"mode": "runOnceForEachItem", "jsCode":
+          "const local=$('Load Incident And Contact Mapping').item.json; const key=local.case_key; "
+          "const rows=($json.body?.records||[]).filter(r=>r.properties?.case_key===key); "
+          "if(rows.length>1)throw new Error('Duplicate Service Case identity'); "
+          "return {json:{record_id:local.ghl_record_id||rows[0]?.id||null}};"}, 800, -100)
+    g.decision("Case Already Exists?", "={{ !!$json.record_id }}", 1060, -100)
+    props = "$('Load Incident And Contact Mapping').item.json.properties"
+    g.http("Update Existing Service Case", "PUT",
+           "={{ '" + BASE + "/objects/" + OBJECT + "/records/' + $('Exact Case Key Match').item.json.record_id }}",
+           1320, -240, "={{ { properties: " + props + " } }}",
+           [{"name": "locationId", "value": LOCATION}])
+    create_props = "{..." + props + ",customer_status:($('Load Incident And Contact Mapping').item.json.properties.technical_status==='RECOVERED'?'AWAITING_CONFIRMATION':'AWAITING_RECOVERY'),affected_since:$('Load Incident And Contact Mapping').item.json.affected_since}"
+    g.http("Create Missing Service Case", "POST", BASE + "/objects/" + OBJECT + "/records",
+           1320, 0, "={{ { locationId: '" + LOCATION + "', properties: " + create_props + " } }}")
+    g.decision("Case Write Succeeded?", "={{ $json.statusCode >= 200 && $json.statusCode < 300 }}", 1570, -100)
+    save = """UPDATE ghl_effects SET ghl_record_id=$2,status='PROCESSING',updated_at=NOW()
+WHERE effect_id=$1 AND status='PROCESSING' AND $2::text IS NOT NULL
+RETURNING effect_id,ghl_record_id;"""
+    g.postgres("Persist Remote ID Before Association", save, 1810, -100,
+               "={{ [$('Load Incident And Contact Mapping').item.json.effect_id, $json.body?.record?.id || $('Exact Case Key Match').item.json.record_id] }}")
+    g.http("Read Contact Case Relations", "GET",
+           "={{ '" + BASE + "/associations/relations/' + $('Load Incident And Contact Mapping').item.json.contact_id }}",
+           2050, -100, params=[{"name": "locationId", "value": LOCATION},
+                               {"name": "skip", "value": "0"}, {"name": "limit", "value": "100"}])
+    g.decision("Relations Read Succeeded?", "={{ $json.statusCode >= 200 && $json.statusCode < 300 }}", 2300, -100)
+    g.decision("Association Already Exists?",
+               "={{ ($json.body?.relations||[]).some(r=>r.secondRecordId===$('Persist Remote ID Before Association').item.json.ghl_record_id && r.associationId==='" + ASSOCIATION + "') }}", 2540, -180)
+    g.http("Create Contact Case Association", "POST", BASE + "/associations/relations", 2780, 0,
+           "={{ { locationId: '" + LOCATION + "', associationId: '" + ASSOCIATION + "', firstRecordId: $('Load Incident And Contact Mapping').item.json.contact_id, secondRecordId: $('Persist Remote ID Before Association').item.json.ghl_record_id } }}")
+    g.decision("Association Write Succeeded?", "={{ $json.statusCode >= 200 && $json.statusCode < 300 }}", 3020, 0)
+    g.postgres("Mark Effect Succeeded", "UPDATE ghl_effects SET status='SUCCEEDED',attempt_count=attempt_count+1,last_error=NULL,updated_at=NOW() WHERE effect_id=$1 AND status='PROCESSING' RETURNING effect_id,status;", 3260, -160,
+               "={{ [$('Load Incident And Contact Mapping').item.json.effect_id] }}")
+    g.postgres("Mark Effect RETRY", "UPDATE ghl_effects SET status='RETRY',attempt_count=attempt_count+1,next_attempt_at=NOW()+CASE WHEN $2::integer=429 THEN interval '90 seconds' ELSE interval '45 seconds' END,last_error=left('HighLevel request failed; HTTP '||coalesce($2::text,'controlled 503 or network error'),200),updated_at=NOW() WHERE effect_id=$1 AND status='PROCESSING' RETURNING effect_id,status,next_attempt_at;", 3260, 180,
+               "={{ [$('Load Incident And Contact Mapping').item.json.effect_id, $json.statusCode || null] }}")
+    g.add("Rate Control Before Next Customer", "wait", {"amount": 1, "unit": "seconds"}, 3500, 0)
+    for start in ("Reconcile Every 30 Seconds", "Manual Reconciliation"):
+        g.link(start, "Enqueue Subscribed Customers Atomically")
+    g.link("Enqueue Subscribed Customers Atomically", "Claim Three Due Effects")
+    g.link("Claim Three Due Effects", "One Customer At A Time")
+    g.link("One Customer At A Time", "Load Incident And Contact Mapping", 1)
+    g.link("Load Incident And Contact Mapping", "Controlled 503 Fixture?")
+    g.link("Controlled 503 Fixture?", "Simulate HighLevel HTTP 503", 0)
+    g.link("Simulate HighLevel HTTP 503", "Mark Effect RETRY")
+    g.link("Controlled 503 Fixture?", "Search Case By Deterministic Key", 1)
+    g.link("Search Case By Deterministic Key", "Case Search Succeeded?")
+    g.link("Case Search Succeeded?", "Exact Case Key Match", 0)
+    g.link("Case Search Succeeded?", "Mark Effect RETRY", 1)
+    g.link("Exact Case Key Match", "Case Already Exists?")
+    g.link("Case Already Exists?", "Update Existing Service Case", 0)
+    g.link("Case Already Exists?", "Create Missing Service Case", 1)
+    for name in ("Update Existing Service Case", "Create Missing Service Case"):
+        g.link(name, "Case Write Succeeded?")
+    g.link("Case Write Succeeded?", "Persist Remote ID Before Association", 0)
+    g.link("Case Write Succeeded?", "Mark Effect RETRY", 1)
+    g.link("Persist Remote ID Before Association", "Read Contact Case Relations")
+    g.link("Read Contact Case Relations", "Relations Read Succeeded?")
+    g.link("Relations Read Succeeded?", "Association Already Exists?", 0)
+    g.link("Relations Read Succeeded?", "Mark Effect RETRY", 1)
+    g.link("Association Already Exists?", "Mark Effect Succeeded", 0)
+    g.link("Association Already Exists?", "Create Contact Case Association", 1)
+    g.link("Create Contact Case Association", "Association Write Succeeded?")
+    g.link("Association Write Succeeded?", "Mark Effect Succeeded", 0)
+    g.link("Association Write Succeeded?", "Mark Effect RETRY", 1)
+    g.link("Mark Effect Succeeded", "Rate Control Before Next Customer")
+    g.link("Mark Effect RETRY", "Rate Control Before Next Customer")
+    g.link("Rate Control Before Next Customer", "One Customer At A Time")
+    return g.result()
+
+
+def build_feedback():
+    g = Graph("GHL 02 - Customer Recovery Feedback")
+    g.add("Poll Every 60 Seconds", "scheduleTrigger",
+          {"rule": {"interval": [{"field": "minutes", "minutesInterval": 1}]}}, -960, 0)
+    eligible = """SELECT e.incident_id,e.customer_key,e.ghl_record_id,gc.contact_id,i.recovered_at,
+ 'RelayCart follow-up · '||e.incident_id AS task_title
+FROM ghl_effects e JOIN ir_incidents i ON i.incident_id=e.incident_id
+JOIN ghl_contacts gc ON gc.customer_key=e.customer_key AND gc.location_id='""" + LOCATION + """'
+WHERE e.status='SUCCEEDED' AND i.state='RECOVERED'
+ AND i.opened_at=(SELECT max(opened_at) FROM ir_incidents
+                  WHERE service=i.service AND environment=i.environment)
+ORDER BY e.customer_key;"""
+    g.postgres("Load Recovered Customer Cases", eligible, -680, 0)
+    g.add("One Contact At A Time", "splitInBatches", {"batchSize": 1, "options": {}}, -420, 0)
+    g.http("Read Native Workflow Outcome Tags", "GET",
+           "={{ '" + BASE + "/contacts/' + $('One Contact At A Time').item.json.contact_id }}", -160, 0)
+    g.decision("Contact Read Succeeded?", "={{ $json.statusCode >= 200 && $json.statusCode < 300 }}", 80, 0)
+    g.add("Interpret Only RelayCart Outcomes", "code", {"mode": "runOnceForEachItem", "jsCode":
+          "const tags=$json.body?.contact?.tags||[]; "
+          "const yes=tags.includes('relaycart-confirmed-resolved'); "
+          "const no=tags.includes('relaycart-needs-follow-up'); "
+          "return {json:{outcome:yes&&!no?'CONFIRMED_RESOLVED':no&&!yes?'NEEDS_FOLLOW_UP':null, tags:tags.filter(t=>t==='relaycart-confirmed-resolved'||t==='relaycart-needs-follow-up')}};"}, 320, -100)
+    g.decision("Outcome Marker Present?", "={{ !!$json.outcome }}", 560, -100)
+    g.http("Find Synthetic Contact Conversation", "GET", BASE + "/conversations/search", 800, -140,
+           params=[{"name": "locationId", "value": LOCATION},
+                   {"name": "contactId", "value": "={{ $('One Contact At A Time').item.json.contact_id }}"},
+                   {"name": "limit", "value": "10"}])
+    g.decision("Conversation Read Succeeded?", "={{ $json.statusCode >= 200 && $json.statusCode < 300 }}", 1040, -140)
+    g.decision("One Conversation Found?", "={{ ($json.body?.conversations||[]).length === 1 }}", 1280, -180)
+    g.http("Read Customer Inbound Messages", "GET",
+           "={{ '" + BASE + "/conversations/' + $('Find Synthetic Contact Conversation').item.json.body.conversations[0].id + '/messages' }}",
+           1520, -220, params=[{"name": "limit", "value": "20"}])
+    g.decision("Messages Read Succeeded?", "={{ $json.statusCode >= 200 && $json.statusCode < 300 }}", 1760, -220)
+    g.add("Require Fresh Matching Customer Reply", "code", {"mode": "runOnceForEachItem", "jsCode":
+          "const cutoff=Date.parse($('One Contact At A Time').item.json.recovered_at); "
+          "const outcome=$('Interpret Only RelayCart Outcomes').item.json.outcome; "
+          "const messages=$json.body?.messages?.messages||[]; "
+          "const fresh=messages.some(m=>m.direction==='inbound' && Date.parse(m.dateAdded)>cutoff && "
+          "!String(m.body||'').startsWith('Synthetic RelayCart checkout recovery test') && "
+          "(outcome==='CONFIRMED_RESOLVED' ? /\\b(yes|works?|working|fixed|succeeds?)\\b/i.test(m.body||'') : "
+          "/\\b(no|still|broken|fail(?:ing|ed)?|errors?)\\b/i.test(m.body||''))); "
+          "return {json:{fresh}};"}, 2000, -220)
+    g.decision("Fresh Reply Supports Marker?", "={{ $json.fresh }}", 2240, -220)
+    g.decision("Confirmed Working?", "={{ $('Interpret Only RelayCart Outcomes').item.json.outcome === 'CONFIRMED_RESOLVED' }}", 2480, -180)
+    g.decision("Still Broken?", "={{ $('Interpret Only RelayCart Outcomes').item.json.outcome === 'NEEDS_FOLLOW_UP' }}", 2720, 0)
+    g.http("Read Existing Follow-up Tasks", "GET",
+           "={{ '" + BASE + "/contacts/' + $('One Contact At A Time').item.json.contact_id + '/tasks' }}", 2960, 180)
+    g.decision("Task Read Succeeded?", "={{ $json.statusCode >= 200 && $json.statusCode < 300 }}", 3200, 180)
+    g.decision("Follow-up Task Already Exists?",
+               "={{ ($json.body?.tasks||[]).some(t=>t.title===$('One Contact At A Time').item.json.task_title) }}", 3440, 120)
+    g.http("Create One Unassigned Support Task", "POST",
+           "={{ '" + BASE + "/contacts/' + $('One Contact At A Time').item.json.contact_id + '/tasks' }}", 3680, 300,
+           "={{ { title: $('One Contact At A Time').item.json.task_title, body: 'Synthetic RelayCart customer '+$('One Contact At A Time').item.json.customer_key+' reports checkout still failing after technical incident '+$('One Contact At A Time').item.json.incident_id+' was RECOVERED. Review Service Case '+$('One Contact At A Time').item.json.ghl_record_id+' for checkout-api context; investigate the customer-specific issue. Do not reopen the technical incident automatically.', dueDate: new Date(Date.now()+86400000).toISOString(), completed: false } }}")
+    g.decision("Task Create Succeeded?", "={{ $json.statusCode >= 200 && $json.statusCode < 300 }}", 3920, 300)
+    g.http("Set Customer Outcome On Service Case", "PUT",
+           "={{ '" + BASE + "/objects/" + OBJECT + "/records/' + $('One Contact At A Time').item.json.ghl_record_id }}", 4160, 0,
+           "={{ { properties: $('Interpret Only RelayCart Outcomes').item.json.outcome==='CONFIRMED_RESOLVED' ? {customer_status:'CONFIRMED_RESOLVED',customer_confirmed_at:new Date().toISOString().slice(0,10)} : {customer_status:'NEEDS_FOLLOW_UP'} } }}",
+           [{"name": "locationId", "value": LOCATION}])
+    g.decision("Case Outcome Saved?", "={{ $json.statusCode >= 200 && $json.statusCode < 300 }}", 4400, 0)
+    feedback = """INSERT INTO ghl_customer_feedback(incident_id,customer_key,ghl_record_id,outcome,occurred_at)
+VALUES($1,$2,$3,$4,NOW()) ON CONFLICT(incident_id,customer_key,outcome) DO NOTHING
+RETURNING incident_id,customer_key,outcome;"""
+    g.postgres("Persist Customer Feedback Separately", feedback, 4640, -100,
+               "={{ [$('One Contact At A Time').item.json.incident_id,$('One Contact At A Time').item.json.customer_key,$('One Contact At A Time').item.json.ghl_record_id,$('Interpret Only RelayCart Outcomes').item.json.outcome] }}")
+    g.http("Clear Only Transient Outcome Tags", "DELETE",
+           "={{ '" + BASE + "/contacts/' + $('One Contact At A Time').item.json.contact_id + '/tags' }}", 4880, -100,
+           "={{ { tags: $('Interpret Only RelayCart Outcomes').item.json.tags } }}")
+    g.decision("Tag Cleanup Succeeded?", "={{ $json.statusCode >= 200 && $json.statusCode < 300 }}", 5120, -100)
+    g.add("Keep Marker For Scheduled Retry", "noOp", {}, 5120, 220)
+    g.add("Next Customer", "wait", {"amount": 1, "unit": "seconds"}, 5360, 0)
+    g.link("Poll Every 60 Seconds", "Load Recovered Customer Cases")
+    g.link("Load Recovered Customer Cases", "One Contact At A Time")
+    g.link("One Contact At A Time", "Read Native Workflow Outcome Tags", 1)
+    g.link("Read Native Workflow Outcome Tags", "Contact Read Succeeded?")
+    g.link("Contact Read Succeeded?", "Interpret Only RelayCart Outcomes", 0)
+    g.link("Contact Read Succeeded?", "Keep Marker For Scheduled Retry", 1)
+    g.link("Interpret Only RelayCart Outcomes", "Outcome Marker Present?")
+    g.link("Outcome Marker Present?", "Find Synthetic Contact Conversation", 0)
+    g.link("Outcome Marker Present?", "Next Customer", 1)
+    g.link("Find Synthetic Contact Conversation", "Conversation Read Succeeded?")
+    g.link("Conversation Read Succeeded?", "One Conversation Found?", 0)
+    g.link("Conversation Read Succeeded?", "Keep Marker For Scheduled Retry", 1)
+    g.link("One Conversation Found?", "Read Customer Inbound Messages", 0)
+    g.link("One Conversation Found?", "Keep Marker For Scheduled Retry", 1)
+    g.link("Read Customer Inbound Messages", "Messages Read Succeeded?")
+    g.link("Messages Read Succeeded?", "Require Fresh Matching Customer Reply", 0)
+    g.link("Messages Read Succeeded?", "Keep Marker For Scheduled Retry", 1)
+    g.link("Require Fresh Matching Customer Reply", "Fresh Reply Supports Marker?")
+    g.link("Fresh Reply Supports Marker?", "Confirmed Working?", 0)
+    g.link("Fresh Reply Supports Marker?", "Clear Only Transient Outcome Tags", 1)
+    g.link("Confirmed Working?", "Set Customer Outcome On Service Case", 0)
+    g.link("Confirmed Working?", "Still Broken?", 1)
+    g.link("Still Broken?", "Read Existing Follow-up Tasks", 0)
+    g.link("Still Broken?", "Next Customer", 1)
+    g.link("Read Existing Follow-up Tasks", "Task Read Succeeded?")
+    g.link("Task Read Succeeded?", "Follow-up Task Already Exists?", 0)
+    g.link("Task Read Succeeded?", "Keep Marker For Scheduled Retry", 1)
+    g.link("Follow-up Task Already Exists?", "Set Customer Outcome On Service Case", 0)
+    g.link("Follow-up Task Already Exists?", "Create One Unassigned Support Task", 1)
+    g.link("Create One Unassigned Support Task", "Task Create Succeeded?")
+    g.link("Task Create Succeeded?", "Set Customer Outcome On Service Case", 0)
+    g.link("Task Create Succeeded?", "Keep Marker For Scheduled Retry", 1)
+    g.link("Set Customer Outcome On Service Case", "Case Outcome Saved?")
+    g.link("Case Outcome Saved?", "Persist Customer Feedback Separately", 0)
+    g.link("Case Outcome Saved?", "Keep Marker For Scheduled Retry", 1)
+    g.link("Persist Customer Feedback Separately", "Clear Only Transient Outcome Tags")
+    g.link("Clear Only Transient Outcome Tags", "Tag Cleanup Succeeded?")
+    g.link("Tag Cleanup Succeeded?", "Next Customer", 0)
+    g.link("Tag Cleanup Succeeded?", "Keep Marker For Scheduled Retry", 1)
+    g.link("Keep Marker For Scheduled Retry", "Next Customer")
+    g.link("Next Customer", "One Contact At A Time")
+    return g.result()
+
+
+if __name__ == "__main__":
+    for filename, graph in (("06-ghl-customer-impact-sync.json", build_impact()),
+                            ("07-ghl-customer-feedback.json", build_feedback())):
+        (ROOT / filename).write_text(json.dumps(graph, indent=2) + "\n", encoding="utf-8")
+        print(filename, len(graph["nodes"]), "nodes")

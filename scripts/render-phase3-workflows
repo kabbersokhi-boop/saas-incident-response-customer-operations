@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+"""Render sanitised workflow-export graphs for visual review (not n8n UI captures)."""
+
+import html
+import json
+import textwrap
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+EVIDENCE = ROOT / "docs" / "evidence"
+SOURCES = (
+    ("06-ghl-customer-impact-sync.json", "phase3-n8n-customer-impact-graph.svg"),
+    ("07-ghl-customer-feedback.json", "phase3-n8n-customer-feedback-graph.svg"),
+)
+COLORS = {
+    "postgres": ("#e9f1ff", "#4370ad"),
+    "httpRequest": ("#e4f7f4", "#247b72"),
+    "if": ("#fff1d9", "#b47720"),
+    "splitInBatches": ("#eee7fb", "#7651ad"),
+    "code": ("#fdf3dc", "#9c7a25"),
+}
+
+
+def render(source, output):
+    graph = json.loads((ROOT / "n8n" / "workflows" / source).read_text())
+    nodes = {node["name"]: node for node in graph["nodes"]}
+    xs = [node["position"][0] for node in nodes.values()]
+    ys = [node["position"][1] for node in nodes.values()]
+    min_x, min_y = min(xs), min(ys)
+
+    def xy(node):
+        x, y = node["position"]
+        return 80 + (x - min_x), 185 + (y - min_y) * 0.9
+
+    width = round(300 + (max(xs) - min_x))
+    height = round(370 + (max(ys) - min_y) * 0.9)
+    parts = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
+             '<rect width="100%" height="100%" fill="#f8fafc"/>',
+             f'<text x="80" y="58" font-family="Arial,sans-serif" font-size="32" font-weight="700" fill="#17253e">{html.escape(graph["name"])}</text>',
+             '<text x="80" y="91" font-family="Arial,sans-serif" font-size="17" fill="#52627a">Visual rendering of the checked-in n8n export · every box is a real workflow node · no credentials shown</text>',
+             '<text x="80" y="126" font-family="Arial,sans-serif" font-size="16" fill="#52627a">Blue: PostgreSQL  ·  Teal: HighLevel HTTP  ·  Amber: decision  ·  Purple: per-customer loop</text>']
+    for source_name, outputs in graph["connections"].items():
+        sx, sy = xy(nodes[source_name])
+        for branch, edges in enumerate(outputs.get("main", [])):
+            for edge in edges:
+                tx, ty = xy(nodes[edge["node"]])
+                color = "#73859b" if branch == 0 else "#a887bb"
+                parts.append(f'<path d="M {sx + 160:.1f} {sy + 34 + branch * 6:.1f} C {(sx + tx) / 2 + 80:.1f} {sy + 34:.1f}, {(sx + tx) / 2 + 80:.1f} {ty + 34:.1f}, {tx:.1f} {ty + 34:.1f}" fill="none" stroke="{color}" stroke-width="2.2" opacity=".65"/>')
+    for node in nodes.values():
+        x, y = xy(node)
+        kind = node["type"].split(".")[-1]
+        fill, border = COLORS.get(kind, ("#eef1f5", "#65768c"))
+        parts.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="160" height="68" rx="12" fill="{fill}" stroke="{border}" stroke-width="2"/>')
+        lines = textwrap.wrap(node["name"], width=20, break_long_words=False)[:3]
+        for index, line in enumerate(lines):
+            parts.append(f'<text x="{x + 12:.1f}" y="{y + 23 + index * 18:.1f}" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">{html.escape(line)}</text>')
+    parts.append('</svg>')
+    output.write_text("\n".join(parts) + "\n", encoding="utf-8")
+    print(output.relative_to(ROOT), len(nodes), "actual nodes")
+
+
+if __name__ == "__main__":
+    for src, dst in SOURCES:
+        render(src, EVIDENCE / dst)

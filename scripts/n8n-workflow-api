@@ -121,12 +121,30 @@ def main() -> int:
     update_parser.add_argument("workflow_json", type=Path)
     activate_parser = sub.add_parser("activate", help="activate one explicitly selected workflow")
     activate_parser.add_argument("workflow_id")
+    deactivate_parser = sub.add_parser("deactivate", help="deactivate one explicitly selected workflow")
+    deactivate_parser.add_argument("workflow_id")
+    executions_parser = sub.add_parser("executions", help="summarize recent executions without node data")
+    executions_parser.add_argument("workflow_id")
+    error_parser = sub.add_parser("execution-error", help="show a bounded error for one execution")
+    error_parser.add_argument("execution_id")
     args = parser.parse_args()
 
     if args.command == "list":
         result = api("GET", "/workflows?limit=250")
         for workflow in (result or {}).get("data", []):
             print(f"{workflow.get('id', '')}\t{workflow.get('name', '')}")
+        return 0
+    if args.command == "executions":
+        result = api("GET", f"/executions?workflowId={args.workflow_id}&limit=20")
+        for item in (result or {}).get("data", []):
+            print(f"{item.get('id')}\t{item.get('status')}\t{item.get('startedAt')}\t{item.get('stoppedAt')}")
+        return 0
+    if args.command == "execution-error":
+        result = api("GET", f"/executions/{args.execution_id}?includeData=true") or {}
+        details = ((result.get("data") or {}).get("resultData") or {}).get("error") or {}
+        print("execution", args.execution_id, "status", result.get("status"),
+              "node", (details.get("node") or {}).get("name"),
+              "type", details.get("name"), "message", str(details.get("message", ""))[:300])
         return 0
 
     if args.command == "status":
@@ -141,6 +159,10 @@ def main() -> int:
         return 0
     if args.command == "activate":
         result = api("POST", f"/workflows/{args.workflow_id}/activate")
+        print(f"Workflow {args.workflow_id} active={bool(result.get('active'))}")
+        return 0
+    if args.command == "deactivate":
+        result = api("POST", f"/workflows/{args.workflow_id}/deactivate")
         print(f"Workflow {args.workflow_id} active={bool(result.get('active'))}")
         return 0
 

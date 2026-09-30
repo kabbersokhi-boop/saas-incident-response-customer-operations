@@ -2,25 +2,1313 @@
   "name": "GHL 02 - Customer Recovery Feedback",
   "nodes": [
     {
-      "parameters": {"rule": {"interval": [{"field": "seconds", "secondsInterval": 30}]}},
-      "id": "70abb921-d9f2-491b-b9e6-b0a4aa646d60",
-      "name": "Poll Native Workflow Outcomes",
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "2cd79c79-88fd-5d45-b64f-119df0d6254f",
+      "name": "Poll Every 60 Seconds",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [-320, 220]
+      "position": [
+        -960,
+        0
+      ]
     },
     {
-      "parameters": {"method": "POST", "url": "http://relaycart-api:8000/customer-ops/poll-feedback", "options": {"timeout": 120000}},
-      "id": "ce79f348-481d-4dd8-bf52-ea49671ea8c8",
-      "name": "Reconcile Customer Outcomes",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT e.incident_id,e.customer_key,e.ghl_record_id,gc.contact_id,i.recovered_at,\n 'RelayCart follow-up \u00b7 '||e.incident_id AS task_title\nFROM ghl_effects e JOIN ir_incidents i ON i.incident_id=e.incident_id\nJOIN ghl_contacts gc ON gc.customer_key=e.customer_key AND gc.location_id='CP8Flhg4iyKzzm6vlOgu'\nWHERE e.status='SUCCEEDED' AND i.state='RECOVERED'\n AND i.opened_at=(SELECT max(opened_at) FROM ir_incidents\n                  WHERE service=i.service AND environment=i.environment)\nORDER BY e.customer_key;",
+        "options": {}
+      },
+      "id": "d015b61b-5c47-512c-ae24-7ca60c085e4c",
+      "name": "Load Recovered Customer Cases",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        -680,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "dJp5v4e6qmyffUpN",
+          "name": "RelayCart Phase 2 Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "6908b9ea-d634-5269-945c-5692e3a4e343",
+      "name": "One Contact At A Time",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -420,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://services.leadconnectorhq.com/contacts/' + $('One Contact At A Time').item.json.contact_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "v3"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "764c37f8-8f33-5539-a0a2-7dab3e9ffbc4",
+      "name": "Read Native Workflow Outcome Tags",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [-40, 220]
+      "position": [
+        -160,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "EvW1batWWwk4xdQV",
+          "name": "RelayCart Demo HighLevel PIT"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0871cbc0-3f98-5b2a-86be-b7141bba605d",
+              "leftValue": "={{ $json.statusCode >= 200 && $json.statusCode < 300 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "dec37cc3-75ef-5bd4-b93f-eceaefbe40f8",
+      "name": "Contact Read Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        80,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const tags=$json.body?.contact?.tags||[]; const yes=tags.includes('relaycart-confirmed-resolved'); const no=tags.includes('relaycart-needs-follow-up'); return {json:{outcome:yes&&!no?'CONFIRMED_RESOLVED':no&&!yes?'NEEDS_FOLLOW_UP':null, tags:tags.filter(t=>t==='relaycart-confirmed-resolved'||t==='relaycart-needs-follow-up')}};"
+      },
+      "id": "dd474dce-5398-5d6f-8379-d9e91a0eb7fd",
+      "name": "Interpret Only RelayCart Outcomes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        320,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e798a201-ec8f-57b1-8c7f-08b9dcd98cc9",
+              "leftValue": "={{ !!$json.outcome }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "962bbaf2-1c4f-501f-8bcf-be0205bdecb3",
+      "name": "Outcome Marker Present?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        560,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://services.leadconnectorhq.com/conversations/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "v3"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "locationId",
+              "value": "CP8Flhg4iyKzzm6vlOgu"
+            },
+            {
+              "name": "contactId",
+              "value": "={{ $('One Contact At A Time').item.json.contact_id }}"
+            },
+            {
+              "name": "limit",
+              "value": "10"
+            }
+          ]
+        }
+      },
+      "id": "19a906d0-85d8-5f3a-81b2-ab06fa7d22f9",
+      "name": "Find Synthetic Contact Conversation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        800,
+        -140
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "EvW1batWWwk4xdQV",
+          "name": "RelayCart Demo HighLevel PIT"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "40520169-7e81-5b41-843a-3ad3d254fcf7",
+              "leftValue": "={{ $json.statusCode >= 200 && $json.statusCode < 300 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "123d05ce-3ce1-53ea-ae53-24ee560eed8c",
+      "name": "Conversation Read Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1040,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ebabfc69-fcbc-5295-8433-b2d6dc3f22a6",
+              "leftValue": "={{ ($json.body?.conversations||[]).length === 1 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "65f03387-5137-5ce7-9f17-9c70308b4bbb",
+      "name": "One Conversation Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1280,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://services.leadconnectorhq.com/conversations/' + $('Find Synthetic Contact Conversation').item.json.body.conversations[0].id + '/messages' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "v3"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "20"
+            }
+          ]
+        }
+      },
+      "id": "79a1bc2a-4f57-5464-9621-94c4b109a8de",
+      "name": "Read Customer Inbound Messages",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1520,
+        -220
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "EvW1batWWwk4xdQV",
+          "name": "RelayCart Demo HighLevel PIT"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c86bdd0f-4765-5830-8ba8-fd525bfec644",
+              "leftValue": "={{ $json.statusCode >= 200 && $json.statusCode < 300 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "13779da0-b1fe-5402-b322-1fe969d31f1a",
+      "name": "Messages Read Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1760,
+        -220
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const cutoff=Date.parse($('One Contact At A Time').item.json.recovered_at); const outcome=$('Interpret Only RelayCart Outcomes').item.json.outcome; const messages=$json.body?.messages?.messages||[]; const fresh=messages.some(m=>m.direction==='inbound' && Date.parse(m.dateAdded)>cutoff && !String(m.body||'').startsWith('Synthetic RelayCart checkout recovery test') && (outcome==='CONFIRMED_RESOLVED' ? /\\b(yes|works?|working|fixed|succeeds?)\\b/i.test(m.body||'') : /\\b(no|still|broken|fail(?:ing|ed)?|errors?)\\b/i.test(m.body||''))); return {json:{fresh}};"
+      },
+      "id": "f3b694a4-9698-5f00-84b0-de561d28ba0f",
+      "name": "Require Fresh Matching Customer Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        -220
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "3aa4be72-b3a9-5b43-97b2-74d3dcca1bf4",
+              "leftValue": "={{ $json.fresh }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "4a8eccfb-af8b-52bd-a85c-6f77c688a62e",
+      "name": "Fresh Reply Supports Marker?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2240,
+        -220
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b8792bec-d26c-58db-8d85-c78256635315",
+              "leftValue": "={{ $('Interpret Only RelayCart Outcomes').item.json.outcome === 'CONFIRMED_RESOLVED' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d776d9d6-052f-5c6c-946a-11e381e3b1c5",
+      "name": "Confirmed Working?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2480,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b038506f-c05e-5f53-92b0-f44e0dd46e18",
+              "leftValue": "={{ $('Interpret Only RelayCart Outcomes').item.json.outcome === 'NEEDS_FOLLOW_UP' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "2dbf8857-1890-5153-9179-ad30096f3a53",
+      "name": "Still Broken?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2720,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://services.leadconnectorhq.com/contacts/' + $('One Contact At A Time').item.json.contact_id + '/tasks' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "v3"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "0723b469-5847-5c97-94dd-d2a7d2d6f35c",
+      "name": "Read Existing Follow-up Tasks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2960,
+        180
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "EvW1batWWwk4xdQV",
+          "name": "RelayCart Demo HighLevel PIT"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "353074c8-9cae-59b7-a2b9-a80c1b59a7a8",
+              "leftValue": "={{ $json.statusCode >= 200 && $json.statusCode < 300 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "38096ab8-08af-5d6d-b60c-acdf876d5b84",
+      "name": "Task Read Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3200,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cbaafe79-599f-5157-bbaf-2583d027a4c9",
+              "leftValue": "={{ ($json.body?.tasks||[]).some(t=>t.title===$('One Contact At A Time').item.json.task_title) }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "dbbf0c84-c53b-586e-a2ca-ea17bda899c3",
+      "name": "Follow-up Task Already Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3440,
+        120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://services.leadconnectorhq.com/contacts/' + $('One Contact At A Time').item.json.contact_id + '/tasks' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "v3"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ { title: $('One Contact At A Time').item.json.task_title, body: 'Synthetic RelayCart customer '+$('One Contact At A Time').item.json.customer_key+' reports checkout still failing after technical incident '+$('One Contact At A Time').item.json.incident_id+' was RECOVERED. Review Service Case '+$('One Contact At A Time').item.json.ghl_record_id+' for checkout-api context; investigate the customer-specific issue. Do not reopen the technical incident automatically.', dueDate: new Date(Date.now()+86400000).toISOString(), completed: false } }}"
+      },
+      "id": "bd53c260-f6f7-5265-95b4-2a60e6eb0db0",
+      "name": "Create One Unassigned Support Task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3680,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "EvW1batWWwk4xdQV",
+          "name": "RelayCart Demo HighLevel PIT"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "227f4466-dcc6-54bf-99b1-78f77147113c",
+              "leftValue": "={{ $json.statusCode >= 200 && $json.statusCode < 300 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "8824305f-d71c-5f6f-a605-f832e24126a9",
+      "name": "Task Create Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3920,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ 'https://services.leadconnectorhq.com/objects/custom_objects.relaycart_service_case/records/' + $('One Contact At A Time').item.json.ghl_record_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "v3"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ { properties: $('Interpret Only RelayCart Outcomes').item.json.outcome==='CONFIRMED_RESOLVED' ? {customer_status:'CONFIRMED_RESOLVED',customer_confirmed_at:new Date().toISOString().slice(0,10)} : {customer_status:'NEEDS_FOLLOW_UP'} } }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "locationId",
+              "value": "CP8Flhg4iyKzzm6vlOgu"
+            }
+          ]
+        }
+      },
+      "id": "59b187f1-f6be-5e3e-b1f3-4735204ef4c7",
+      "name": "Set Customer Outcome On Service Case",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4160,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "EvW1batWWwk4xdQV",
+          "name": "RelayCart Demo HighLevel PIT"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "5c3055d8-1802-589a-88bb-30232c0d9e76",
+              "leftValue": "={{ $json.statusCode >= 200 && $json.statusCode < 300 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "9df8c783-68d4-574a-8696-e36a10e61251",
+      "name": "Case Outcome Saved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ghl_customer_feedback(incident_id,customer_key,ghl_record_id,outcome,occurred_at)\nVALUES($1,$2,$3,$4,NOW()) ON CONFLICT(incident_id,customer_key,outcome) DO NOTHING\nRETURNING incident_id,customer_key,outcome;",
+        "options": {
+          "queryReplacement": "={{ [$('One Contact At A Time').item.json.incident_id,$('One Contact At A Time').item.json.customer_key,$('One Contact At A Time').item.json.ghl_record_id,$('Interpret Only RelayCart Outcomes').item.json.outcome] }}"
+        }
+      },
+      "id": "c2afe3ee-aee4-52fd-9251-9fdd3255810f",
+      "name": "Persist Customer Feedback Separately",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        4640,
+        -100
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "dJp5v4e6qmyffUpN",
+          "name": "RelayCart Phase 2 Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "={{ 'https://services.leadconnectorhq.com/contacts/' + $('One Contact At A Time').item.json.contact_id + '/tags' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "v3"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ { tags: $('Interpret Only RelayCart Outcomes').item.json.tags } }}"
+      },
+      "id": "fa5ae3eb-b245-5574-b6ab-fca9a01f8ba3",
+      "name": "Clear Only Transient Outcome Tags",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4880,
+        -100
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "EvW1batWWwk4xdQV",
+          "name": "RelayCart Demo HighLevel PIT"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "95a3a67a-929d-5015-830d-e4f9822e913c",
+              "leftValue": "={{ $json.statusCode >= 200 && $json.statusCode < 300 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bfb01f8b-9ea1-57ae-beda-3782b671d124",
+      "name": "Tag Cleanup Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5120,
+        -100
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "5f387fa2-359e-595d-8e15-8b340529c2a8",
+      "name": "Keep Marker For Scheduled Retry",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        5120,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 1,
+        "unit": "seconds"
+      },
+      "id": "6d48b8bc-4ef8-5e06-bb58-1c9cc2155033",
+      "name": "Next Customer",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        5360,
+        0
+      ]
     }
   ],
   "connections": {
-    "Poll Native Workflow Outcomes": {"main": [[{"node": "Reconcile Customer Outcomes", "type": "main", "index": 0}]]}
+    "Poll Every 60 Seconds": {
+      "main": [
+        [
+          {
+            "node": "Load Recovered Customer Cases",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Recovered Customer Cases": {
+      "main": [
+        [
+          {
+            "node": "One Contact At A Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One Contact At A Time": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Read Native Workflow Outcome Tags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Native Workflow Outcome Tags": {
+      "main": [
+        [
+          {
+            "node": "Contact Read Succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contact Read Succeeded?": {
+      "main": [
+        [
+          {
+            "node": "Interpret Only RelayCart Outcomes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Keep Marker For Scheduled Retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Interpret Only RelayCart Outcomes": {
+      "main": [
+        [
+          {
+            "node": "Outcome Marker Present?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Outcome Marker Present?": {
+      "main": [
+        [
+          {
+            "node": "Find Synthetic Contact Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Next Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Synthetic Contact Conversation": {
+      "main": [
+        [
+          {
+            "node": "Conversation Read Succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Conversation Read Succeeded?": {
+      "main": [
+        [
+          {
+            "node": "One Conversation Found?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Keep Marker For Scheduled Retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One Conversation Found?": {
+      "main": [
+        [
+          {
+            "node": "Read Customer Inbound Messages",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Keep Marker For Scheduled Retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Customer Inbound Messages": {
+      "main": [
+        [
+          {
+            "node": "Messages Read Succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Messages Read Succeeded?": {
+      "main": [
+        [
+          {
+            "node": "Require Fresh Matching Customer Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Keep Marker For Scheduled Retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Require Fresh Matching Customer Reply": {
+      "main": [
+        [
+          {
+            "node": "Fresh Reply Supports Marker?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fresh Reply Supports Marker?": {
+      "main": [
+        [
+          {
+            "node": "Confirmed Working?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Clear Only Transient Outcome Tags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirmed Working?": {
+      "main": [
+        [
+          {
+            "node": "Set Customer Outcome On Service Case",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Still Broken?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Still Broken?": {
+      "main": [
+        [
+          {
+            "node": "Read Existing Follow-up Tasks",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Next Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Existing Follow-up Tasks": {
+      "main": [
+        [
+          {
+            "node": "Task Read Succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Task Read Succeeded?": {
+      "main": [
+        [
+          {
+            "node": "Follow-up Task Already Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Keep Marker For Scheduled Retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Follow-up Task Already Exists?": {
+      "main": [
+        [
+          {
+            "node": "Set Customer Outcome On Service Case",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create One Unassigned Support Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create One Unassigned Support Task": {
+      "main": [
+        [
+          {
+            "node": "Task Create Succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Task Create Succeeded?": {
+      "main": [
+        [
+          {
+            "node": "Set Customer Outcome On Service Case",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Keep Marker For Scheduled Retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Customer Outcome On Service Case": {
+      "main": [
+        [
+          {
+            "node": "Case Outcome Saved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Case Outcome Saved?": {
+      "main": [
+        [
+          {
+            "node": "Persist Customer Feedback Separately",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Keep Marker For Scheduled Retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist Customer Feedback Separately": {
+      "main": [
+        [
+          {
+            "node": "Clear Only Transient Outcome Tags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear Only Transient Outcome Tags": {
+      "main": [
+        [
+          {
+            "node": "Tag Cleanup Succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tag Cleanup Succeeded?": {
+      "main": [
+        [
+          {
+            "node": "Next Customer",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Keep Marker For Scheduled Retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep Marker For Scheduled Retry": {
+      "main": [
+        [
+          {
+            "node": "Next Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Next Customer": {
+      "main": [
+        [
+          {
+            "node": "One Contact At A Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "settings": {"executionOrder": "v1", "timezone": "UTC", "saveExecutionProgress": true},
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "UTC",
+    "saveExecutionProgress": true
+  },
   "active": false
 }

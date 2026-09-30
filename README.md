@@ -2,7 +2,7 @@
 
 RelayCart is a local, synthetic SaaS operations demo. Phase 1 provides checkout and independent deployment, health, and business-transaction evidence. Phase 2 adds n8n incident automation, PostgreSQL, and advisory NVIDIA NIM investigation. Phase 3 adds customer operations in an isolated GoHighLevel location: 30 synthetic contacts, real Service Case custom objects and associations, three native workflows, Conversation AI recovery confirmation, and human follow-up.
 
-**n8n owns technical recovery; GoHighLevel owns customer recovery.** A technically `RECOVERED` incident does not mean every customer's Service Case is `CONFIRMED_RESOLVED`. One customer can confirm success while another needs support.
+**n8n orchestrates technical recovery and the cross-platform customer handoff; PostgreSQL keeps it durable; GoHighLevel runs customer operations.** A technically `RECOVERED` incident does not mean every customer's Service Case is `CONFIRMED_RESOLVED`. One customer can confirm success while another needs support.
 
 The release operation, application health, and business transaction are separate facts:
 
@@ -64,7 +64,9 @@ The Phase 2 verification report lists which live workflow scenarios have been ex
 
 ## Phase 3 customer operations
 
-The two small Phase 3 n8n workflows reconcile customer impact and feedback. A deterministic PostgreSQL effect ledger retries temporary HighLevel failures without changing the technical incident. RelayCart subscriptions select the 18 checkout customers; Green Dental is the unaffected control. Each affected customer receives one associated HighLevel Service Case per incident.
+The two Phase 3 n8n workflows visibly orchestrate customer impact and feedback: Postgres effect claims, per-customer loops, credential-backed HighLevel reads/writes, create/update and outcome branches, association and task checks, and retry persistence. A deterministic PostgreSQL effect ledger retries temporary HighLevel failures without changing the technical incident. RelayCart subscriptions select the 18 checkout customers; Green Dental is the unaffected control. Each affected customer receives one associated HighLevel Service Case per incident.
+
+Review the checked-in [Customer Impact Sync graph](docs/evidence/phase3-n8n-customer-impact-graph.png) and [Customer Recovery Feedback graph](docs/evidence/phase3-n8n-customer-feedback-graph.png). These are rendered directly from the workflow exports, not editor UI captures.
 
 The native HighLevel Service Case Intake and Technical Recovery workflows hand a recovered case to the contact-based Customer Recovery Confirmation workflow. Its Conversation AI asks the customer to retry checkout. Confirmation closes only that customer's case; a still-broken reply creates a human follow-up task while the technical incident remains `RECOVERED`. Test chat uses only synthetic Live Chat conversations, never real outbound SMS or email.
 

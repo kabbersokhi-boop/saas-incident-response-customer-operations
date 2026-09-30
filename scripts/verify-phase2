@@ -7,6 +7,33 @@ cd "$repo_dir"
 printf '%s\n' '== RelayCart ↔ n8n network =='
 ./scripts/connect-n8n
 
+# Phase 2's live fixtures intentionally reset/create temporary production-demo
+# incidents. Pause only this project's Phase 3 mirrors so those fixtures do not
+# leave orphan synthetic Service Cases in the isolated GHL demo location.
+ghl_impact_was_active=0
+ghl_feedback_was_active=0
+restore_phase3_workflows() {
+  if [ "$ghl_impact_was_active" -eq 1 ]; then
+    ./scripts/n8n-workflow-api activate lhpMBpbBH3j4BDjm || true
+  fi
+  if [ "$ghl_feedback_was_active" -eq 1 ]; then
+    ./scripts/n8n-workflow-api activate tjUprwydaLuekcMg || true
+  fi
+}
+trap restore_phase3_workflows 0
+if impact_status=$(./scripts/n8n-workflow-api status lhpMBpbBH3j4BDjm 2>/dev/null); then
+  if [ "$impact_status" = 'Workflow lhpMBpbBH3j4BDjm active=True' ]; then
+    ghl_impact_was_active=1
+    ./scripts/n8n-workflow-api deactivate lhpMBpbBH3j4BDjm
+  fi
+fi
+if feedback_status=$(./scripts/n8n-workflow-api status tjUprwydaLuekcMg 2>/dev/null); then
+  if [ "$feedback_status" = 'Workflow tjUprwydaLuekcMg active=True' ]; then
+    ghl_feedback_was_active=1
+    ./scripts/n8n-workflow-api deactivate tjUprwydaLuekcMg
+  fi
+fi
+
 printf '%s\n' '== Build API image with Phase 2 verification tests =='
 docker compose up -d --build api
 

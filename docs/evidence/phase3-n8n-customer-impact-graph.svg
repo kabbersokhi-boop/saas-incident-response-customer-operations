@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="4900" height="748" viewBox="0 0 4900 748">
+<rect width="100%" height="100%" fill="#f8fafc"/>
+<text x="80" y="58" font-family="Arial,sans-serif" font-size="32" font-weight="700" fill="#17253e">GHL 01 - Customer Impact Sync</text>
+<text x="80" y="91" font-family="Arial,sans-serif" font-size="17" fill="#52627a">Visual rendering of the checked-in n8n export · every box is a real workflow node · no credentials shown</text>
+<text x="80" y="126" font-family="Arial,sans-serif" font-size="16" fill="#52627a">Blue: PostgreSQL  ·  Teal: HighLevel HTTP  ·  Amber: decision  ·  Purple: per-customer loop</text>
+<path d="M 240.0 345.0 C 300.0 345.0, 300.0 435.0, 360.0 435.0" fill="none" stroke="#73859b" stroke-width="2.2" opacity=".65"/>
+<path d="M 240.0 525.0 C 300.0 525.0, 300.0 435.0, 360.0 435.0" fill="none" stroke="#73859b" stroke-width="2.2" opacity=".65"/>
+<path d="M 520.0 435.0 C 580.0 435.0, 580.0 435.0, 640.0 435.0" fill="none" stroke="#73859b" stroke-width="2.2" opacity=".65"/>
+<path d="M 800.0 435.0 C 850.0 435.0, 850.0 435.0, 900.0 435.0" fill="none" stroke="#73859b" stroke-width="2.2" opacity=".65"/>
+<path d="M 1060.0 441.0 C 1120.0 435.0, 1120.0 435.0, 1180.0 435.0" fill="none" stroke="#a887bb" stroke-width="2.2" opacity=".65"/>
+<path d="M 1340.0 435.0 C 1330.0 435.0, 1330.0 579.0, 1320.0 579.0" fill="none" stroke="#73859b" stroke-width="2.2" opacity=".65"/>
+<path d="M 1480.0 579.0 C 1510.0 579.0, 1510.0 597.0, 1540.0 597.0" fill="none" stroke="#73859b" stroke-width="2.2" opacity=".65"/>
+<path d="M 1480.0 585.0 C 1510.0 579.0, 1510.0 435.0, 1540.0 435.0" fill="none" stroke="#a887bb" stroke-width="2.2" opacity=".65"/>
+<path d="M 1700.0 597.0 C 3070.0 597.0, 3070.0 597.0, 4440.0 597.0" fill="none" stroke="#73859b" stroke-width="2.2" opacity=".65"/>
+<path d="M 1700.0 435.0 C 1710.0 435.0, 1710.0 435.0, 1720.0 435.0" fill="none" stroke="#73859b" stroke-width="2.2" opacity=".65"/>
+<path d="M 1880.0 435.0 C 1930.0 435.0, 1930.0 345.0, 1980.0 345.0" fill="none" stroke="#73859b" stroke-width="2.2" opacity=".65"/>
+<path d="M 1880.0 441.0 C 3160.0 435.0, 3160.0 597.0, 4440.0 597.0" fill="none" stroke="#a887bb" stroke-width="2.2" opacity=".65"/>
+<path d="M 2140.0 345.0 C 2190.0 345.0, 2190.0 345.0, 2240.0 345.0" fill="none" stroke="#73859b" stroke-width="2.2" opacity=".65"/>
+<path d="M 2400.0 345.0 C 2450.0 345.0, 2450.0 219.0, 2500.0 219.0" fill="none" stroke="#73859b" stroke-width="2.2" opacity=".65"/>
+<path d="M 2400.0 351.0 C 2450.0 345.0, 2450.0 435.0, 2500.0 435.0" fill="none" stroke="#a887bb" stroke-width="2.2" opacity=".65"/>
+<path d="M 2660.0 219.0 C 2705.0 219.0, 2705.0 345.0, 2750.0 345.0" fill="none" stroke="#73859b" stroke-width="2.2" opacity=".65"/>
+<path d="M 2660.0 435.0 C 2705.0 435.0, 2705.0 345.0, 2750.0 345.0" fill="none" stroke="#73859b" stroke-width="2.2" opacity=".65"/>
+<path d="M 2910.0 345.0 C 2950.0 345.0, 2950.0 345.0, 2990.0 345.0" fill="none" stroke="#73859b" stroke-width="2.2" opacity=".65"/>
+<path d="M 2910.0 351.0 C 3675.0 345.0, 3675.0 597.0, 4440.0 597.0" fill="none" stroke="#a887bb" stroke-width="2.2" opacity=".65"/>
+<path d="M 3150.0 345.0 C 3190.0 345.0, 3190.0 345.0, 3230.0 345.0" fill="none" stroke="#73859b" stroke-width="2.2" opacity=".65"/>
+<path d="M 3390.0 345.0 C 3435.0 345.0, 3435.0 345.0, 3480.0 345.0" fill="none" stroke="#73859b" stroke-width="2.2" opacity=".65"/>
+<path d="M 3640.0 345.0 C 3680.0 345.0, 3680.0 273.0, 3720.0 273.0" fill="none" stroke="#73859b" stroke-width="2.2" opacity=".65"/>
+<path d="M 3640.0 351.0 C 4040.0 345.0, 4040.0 597.0, 4440.0 597.0" fill="none" stroke="#a887bb" stroke-width="2.2" opacity=".65"/>
+<path d="M 3880.0 273.0 C 4160.0 273.0, 4160.0 291.0, 4440.0 291.0" fill="none" stroke="#73859b" stroke-width="2.2" opacity=".65"/>
+<path d="M 3880.0 279.0 C 3920.0 273.0, 3920.0 435.0, 3960.0 435.0" fill="none" stroke="#a887bb" stroke-width="2.2" opacity=".65"/>
+<path d="M 4120.0 435.0 C 4160.0 435.0, 4160.0 435.0, 4200.0 435.0" fill="none" stroke="#73859b" stroke-width="2.2" opacity=".65"/>
+<path d="M 4360.0 435.0 C 4400.0 435.0, 4400.0 291.0, 4440.0 291.0" fill="none" stroke="#73859b" stroke-width="2.2" opacity=".65"/>
+<path d="M 4360.0 441.0 C 4400.0 435.0, 4400.0 597.0, 4440.0 597.0" fill="none" stroke="#a887bb" stroke-width="2.2" opacity=".65"/>
+<path d="M 4600.0 291.0 C 4640.0 291.0, 4640.0 435.0, 4680.0 435.0" fill="none" stroke="#73859b" stroke-width="2.2" opacity=".65"/>
+<path d="M 4600.0 597.0 C 4640.0 597.0, 4640.0 435.0, 4680.0 435.0" fill="none" stroke="#73859b" stroke-width="2.2" opacity=".65"/>
+<path d="M 4840.0 435.0 C 2870.0 435.0, 2870.0 435.0, 900.0 435.0" fill="none" stroke="#73859b" stroke-width="2.2" opacity=".65"/>
+<rect x="80.0" y="311.0" width="160" height="68" rx="12" fill="#eef1f5" stroke="#65768c" stroke-width="2"/>
+<text x="92.0" y="334.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Reconcile Every 30</text>
+<text x="92.0" y="352.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Seconds</text>
+<rect x="80.0" y="491.0" width="160" height="68" rx="12" fill="#eef1f5" stroke="#65768c" stroke-width="2"/>
+<text x="92.0" y="514.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Manual</text>
+<text x="92.0" y="532.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Reconciliation</text>
+<rect x="360.0" y="401.0" width="160" height="68" rx="12" fill="#e9f1ff" stroke="#4370ad" stroke-width="2"/>
+<text x="372.0" y="424.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Enqueue Subscribed</text>
+<text x="372.0" y="442.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Customers Atomically</text>
+<rect x="640.0" y="401.0" width="160" height="68" rx="12" fill="#e9f1ff" stroke="#4370ad" stroke-width="2"/>
+<text x="652.0" y="424.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Claim Three Due</text>
+<text x="652.0" y="442.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Effects</text>
+<rect x="900.0" y="401.0" width="160" height="68" rx="12" fill="#eee7fb" stroke="#7651ad" stroke-width="2"/>
+<text x="912.0" y="424.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">One Customer At A</text>
+<text x="912.0" y="442.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Time</text>
+<rect x="1180.0" y="401.0" width="160" height="68" rx="12" fill="#e9f1ff" stroke="#4370ad" stroke-width="2"/>
+<text x="1192.0" y="424.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Load Incident And</text>
+<text x="1192.0" y="442.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Contact Mapping</text>
+<rect x="1320.0" y="545.0" width="160" height="68" rx="12" fill="#fff1d9" stroke="#b47720" stroke-width="2"/>
+<text x="1332.0" y="568.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Controlled 503</text>
+<text x="1332.0" y="586.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Fixture?</text>
+<rect x="1540.0" y="563.0" width="160" height="68" rx="12" fill="#eef1f5" stroke="#65768c" stroke-width="2"/>
+<text x="1552.0" y="586.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Simulate HighLevel</text>
+<text x="1552.0" y="604.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">HTTP 503</text>
+<rect x="1540.0" y="401.0" width="160" height="68" rx="12" fill="#e4f7f4" stroke="#247b72" stroke-width="2"/>
+<text x="1552.0" y="424.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Search Case By</text>
+<text x="1552.0" y="442.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Deterministic Key</text>
+<rect x="1720.0" y="401.0" width="160" height="68" rx="12" fill="#fff1d9" stroke="#b47720" stroke-width="2"/>
+<text x="1732.0" y="424.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Case Search</text>
+<text x="1732.0" y="442.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Succeeded?</text>
+<rect x="1980.0" y="311.0" width="160" height="68" rx="12" fill="#fdf3dc" stroke="#9c7a25" stroke-width="2"/>
+<text x="1992.0" y="334.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Exact Case Key Match</text>
+<rect x="2240.0" y="311.0" width="160" height="68" rx="12" fill="#fff1d9" stroke="#b47720" stroke-width="2"/>
+<text x="2252.0" y="334.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Case Already Exists?</text>
+<rect x="2500.0" y="185.0" width="160" height="68" rx="12" fill="#e4f7f4" stroke="#247b72" stroke-width="2"/>
+<text x="2512.0" y="208.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Update Existing</text>
+<text x="2512.0" y="226.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Service Case</text>
+<rect x="2500.0" y="401.0" width="160" height="68" rx="12" fill="#e4f7f4" stroke="#247b72" stroke-width="2"/>
+<text x="2512.0" y="424.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Create Missing</text>
+<text x="2512.0" y="442.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Service Case</text>
+<rect x="2750.0" y="311.0" width="160" height="68" rx="12" fill="#fff1d9" stroke="#b47720" stroke-width="2"/>
+<text x="2762.0" y="334.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Case Write</text>
+<text x="2762.0" y="352.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Succeeded?</text>
+<rect x="2990.0" y="311.0" width="160" height="68" rx="12" fill="#e9f1ff" stroke="#4370ad" stroke-width="2"/>
+<text x="3002.0" y="334.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Persist Remote ID</text>
+<text x="3002.0" y="352.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Before Association</text>
+<rect x="3230.0" y="311.0" width="160" height="68" rx="12" fill="#e4f7f4" stroke="#247b72" stroke-width="2"/>
+<text x="3242.0" y="334.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Read Contact Case</text>
+<text x="3242.0" y="352.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Relations</text>
+<rect x="3480.0" y="311.0" width="160" height="68" rx="12" fill="#fff1d9" stroke="#b47720" stroke-width="2"/>
+<text x="3492.0" y="334.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Relations Read</text>
+<text x="3492.0" y="352.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Succeeded?</text>
+<rect x="3720.0" y="239.0" width="160" height="68" rx="12" fill="#fff1d9" stroke="#b47720" stroke-width="2"/>
+<text x="3732.0" y="262.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Association Already</text>
+<text x="3732.0" y="280.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Exists?</text>
+<rect x="3960.0" y="401.0" width="160" height="68" rx="12" fill="#e4f7f4" stroke="#247b72" stroke-width="2"/>
+<text x="3972.0" y="424.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Create Contact Case</text>
+<text x="3972.0" y="442.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Association</text>
+<rect x="4200.0" y="401.0" width="160" height="68" rx="12" fill="#fff1d9" stroke="#b47720" stroke-width="2"/>
+<text x="4212.0" y="424.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Association Write</text>
+<text x="4212.0" y="442.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Succeeded?</text>
+<rect x="4440.0" y="257.0" width="160" height="68" rx="12" fill="#e9f1ff" stroke="#4370ad" stroke-width="2"/>
+<text x="4452.0" y="280.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Mark Effect</text>
+<text x="4452.0" y="298.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Succeeded</text>
+<rect x="4440.0" y="563.0" width="160" height="68" rx="12" fill="#e9f1ff" stroke="#4370ad" stroke-width="2"/>
+<text x="4452.0" y="586.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Mark Effect RETRY</text>
+<rect x="4680.0" y="401.0" width="160" height="68" rx="12" fill="#eef1f5" stroke="#65768c" stroke-width="2"/>
+<text x="4692.0" y="424.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Rate Control Before</text>
+<text x="4692.0" y="442.0" font-family="Arial,sans-serif" font-size="14" font-weight="600" fill="#1b2a3c">Next Customer</text>
+</svg>

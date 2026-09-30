@@ -2,35 +2,1045 @@
   "name": "GHL 01 - Customer Impact Sync",
   "nodes": [
     {
-      "parameters": {"rule": {"interval": [{"field": "seconds", "secondsInterval": 30}]}},
-      "id": "478f3bec-26ef-47c6-8f1f-59e37dfeae7d",
-      "name": "Reconcile Schedule",
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "seconds",
+              "secondsInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "4cd7d7e7-daf2-59a0-9d3a-3a45689232dd",
+      "name": "Reconcile Every 30 Seconds",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [-400, 0]
+      "position": [
+        -1100,
+        -100
+      ]
     },
     {
-      "parameters": {"httpMethod": "POST", "path": "relaycart/customer-impact/sync", "responseMode": "lastNode", "options": {}},
-      "id": "65073d6f-b749-4abb-a4aa-81ddc02bb407",
-      "name": "Manual Sync Webhook",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "relaycart/customer-impact/sync",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "8e137f37-c038-5620-9a21-eb3b6983cdc3",
+      "name": "Manual Reconciliation",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [-400, 180],
+      "position": [
+        -1100,
+        100
+      ],
       "webhookId": "relaycart-customer-impact-sync"
     },
     {
-      "parameters": {"method": "POST", "url": "http://relaycart-api:8000/customer-ops/sync", "options": {"timeout": 120000}},
-      "id": "8604f27c-a169-4ed4-be57-2cbe0c8ca86a",
-      "name": "Reconcile Customer Effects",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO ghl_effects(effect_id,incident_id,customer_key,effect_type,desired_state)\nSELECT 'service-case:'||i.incident_id||':'||c.slug,i.incident_id,c.slug,'service_case',\n jsonb_build_object('technical_status',i.state,'severity',i.severity,\n 'impact_summary',coalesce(i.summary,'RelayCart service incident'),\n 'revision',i.revision,'updated_at',i.updated_at,'recovered_at',i.recovered_at)\nFROM ir_incidents i JOIN services s ON s.service_key=i.service\nJOIN customer_service_subscriptions css ON css.service_id=s.id AND css.status='active'\nJOIN customers c ON c.id=css.customer_id\nJOIN ghl_contacts gc ON gc.customer_key=c.slug AND gc.location_id='CP8Flhg4iyKzzm6vlOgu'\nWHERE i.environment='production-demo' AND i.state<>'RESOLVED'\nON CONFLICT(effect_id) DO UPDATE SET desired_state=EXCLUDED.desired_state,\n status='PENDING',next_attempt_at=NOW(),updated_at=NOW()\nWHERE ghl_effects.desired_state IS DISTINCT FROM EXCLUDED.desired_state\n  AND ghl_effects.status<>'PROCESSING';",
+        "options": {}
+      },
+      "id": "fc1f5a8d-039b-5dd3-ac63-54e720ecf7b4",
+      "name": "Enqueue Subscribed Customers Atomically",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        -820,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "dJp5v4e6qmyffUpN",
+          "name": "RelayCart Phase 2 Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH due AS (\n SELECT effect_id FROM ghl_effects\n WHERE (status IN ('PENDING','RETRY','PROCESSING') AND next_attempt_at<=NOW())\n ORDER BY next_attempt_at,created_at,customer_key LIMIT 3 FOR UPDATE SKIP LOCKED\n), claimed AS (\n UPDATE ghl_effects e SET status='PROCESSING',next_attempt_at=NOW()+interval '3 minutes',updated_at=NOW()\n FROM due WHERE e.effect_id=due.effect_id\n RETURNING e.effect_id,e.incident_id,e.customer_key,e.desired_state,e.ghl_record_id\n)\nSELECT * FROM claimed ORDER BY customer_key;",
+        "options": {}
+      },
+      "id": "695343df-5cd2-573b-9834-7a8712fbb954",
+      "name": "Claim Three Due Effects",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        -540,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "dJp5v4e6qmyffUpN",
+          "name": "RelayCart Phase 2 Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "afdcac1c-8388-5d97-b418-8c9e33ee8a11",
+      "name": "One Customer At A Time",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -280,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT e.effect_id,e.incident_id,e.customer_key,e.ghl_record_id,gc.contact_id,\n 'SC-'||e.incident_id||'-'||e.customer_key AS case_key,\n jsonb_strip_nulls(jsonb_build_object(\n 'case_key','SC-'||e.incident_id||'-'||e.customer_key,\n 'incident_id',e.incident_id,'customer_key',e.customer_key,'service',i.service,\n 'severity',e.desired_state->>'severity',\n 'impact_summary',left(e.desired_state->>'impact_summary',1000),\n 'technical_status',e.desired_state->>'technical_status',\n 'last_technical_update',left(e.desired_state->>'updated_at',10),\n 'recovery_verified_at',left(e.desired_state->>'recovered_at',10),\n 'sync_revision',(e.desired_state->>'revision')::integer,'demo_record','yes')) AS properties,\n i.opened_at::date AS affected_since\nFROM ghl_effects e JOIN ir_incidents i ON i.incident_id=e.incident_id\nJOIN ghl_contacts gc ON gc.customer_key=e.customer_key AND gc.location_id='CP8Flhg4iyKzzm6vlOgu'\nWHERE e.effect_id=$1 AND e.status='PROCESSING';",
+        "options": {
+          "queryReplacement": "={{ [$json.effect_id] }}"
+        }
+      },
+      "id": "a3af9919-ddbc-52ba-810c-7753721749e0",
+      "name": "Load Incident And Contact Mapping",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "dJp5v4e6qmyffUpN",
+          "name": "RelayCart Phase 2 Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "a4be5062-1ce7-5deb-8339-beaa697c506b",
+              "leftValue": "={{ $('Manual Reconciliation').isExecuted && $('Manual Reconciliation').first().json.query?.simulate_503 === '1' }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "80472e1a-e8e0-5200-a55a-786a42bfe216",
+      "name": "Controlled 503 Fixture?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        140,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "controlled-503",
+              "name": "statusCode",
+              "value": 503,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f591d368-108f-5e15-8646-41bc608c75a8",
+      "name": "Simulate HighLevel HTTP 503",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        360,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://services.leadconnectorhq.com/objects/custom_objects.relaycart_service_case/records/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "v3"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ { locationId: 'CP8Flhg4iyKzzm6vlOgu', page: 1, pageLimit: 20, query: $('Load Incident And Contact Mapping').item.json.case_key, searchAfter: [] } }}"
+      },
+      "id": "6156709a-08c7-50c7-8377-f123171d67ee",
+      "name": "Search Case By Deterministic Key",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [-120, 80]
+      "position": [
+        360,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "EvW1batWWwk4xdQV",
+          "name": "RelayCart Demo HighLevel PIT"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "13fbd5d1-5987-543a-8cb0-ec6c6745290b",
+              "leftValue": "={{ $json.statusCode >= 200 && $json.statusCode < 300 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1de6a17a-97c1-5f33-b120-3096d36eaed7",
+      "name": "Case Search Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        540,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const local=$('Load Incident And Contact Mapping').item.json; const key=local.case_key; const rows=($json.body?.records||[]).filter(r=>r.properties?.case_key===key); if(rows.length>1)throw new Error('Duplicate Service Case identity'); return {json:{record_id:local.ghl_record_id||rows[0]?.id||null}};"
+      },
+      "id": "e1b6efdd-a4e9-59ac-aa97-5ddc818f45a0",
+      "name": "Exact Case Key Match",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "84798b27-229a-502b-bad8-eb8adba943b3",
+              "leftValue": "={{ !!$json.record_id }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "65f830fe-7289-5fc2-9e10-4bedb94c0d39",
+      "name": "Case Already Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1060,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ 'https://services.leadconnectorhq.com/objects/custom_objects.relaycart_service_case/records/' + $('Exact Case Key Match').item.json.record_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "v3"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ { properties: $('Load Incident And Contact Mapping').item.json.properties } }}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "locationId",
+              "value": "CP8Flhg4iyKzzm6vlOgu"
+            }
+          ]
+        }
+      },
+      "id": "c8931d97-7672-5115-acc0-d2bbd8ec849d",
+      "name": "Update Existing Service Case",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        -240
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "EvW1batWWwk4xdQV",
+          "name": "RelayCart Demo HighLevel PIT"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://services.leadconnectorhq.com/objects/custom_objects.relaycart_service_case/records",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "v3"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ { locationId: 'CP8Flhg4iyKzzm6vlOgu', properties: {...$('Load Incident And Contact Mapping').item.json.properties,customer_status:($('Load Incident And Contact Mapping').item.json.properties.technical_status==='RECOVERED'?'AWAITING_CONFIRMATION':'AWAITING_RECOVERY'),affected_since:$('Load Incident And Contact Mapping').item.json.affected_since} } }}"
+      },
+      "id": "4d6d8e0c-b40c-572d-ae2c-1013579d9add",
+      "name": "Create Missing Service Case",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "EvW1batWWwk4xdQV",
+          "name": "RelayCart Demo HighLevel PIT"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "69c93daf-befc-57a3-b7a3-a4fbfbd30b1b",
+              "leftValue": "={{ $json.statusCode >= 200 && $json.statusCode < 300 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "eb91ea84-e75e-5503-89a9-6ef5d08430b4",
+      "name": "Case Write Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1570,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE ghl_effects SET ghl_record_id=$2,status='PROCESSING',updated_at=NOW()\nWHERE effect_id=$1 AND status='PROCESSING' AND $2::text IS NOT NULL\nRETURNING effect_id,ghl_record_id;",
+        "options": {
+          "queryReplacement": "={{ [$('Load Incident And Contact Mapping').item.json.effect_id, $json.body?.record?.id || $('Exact Case Key Match').item.json.record_id] }}"
+        }
+      },
+      "id": "7bff9c84-097e-5988-ac72-e6385a68e560",
+      "name": "Persist Remote ID Before Association",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1810,
+        -100
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "dJp5v4e6qmyffUpN",
+          "name": "RelayCart Phase 2 Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://services.leadconnectorhq.com/associations/relations/' + $('Load Incident And Contact Mapping').item.json.contact_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "v3"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "locationId",
+              "value": "CP8Flhg4iyKzzm6vlOgu"
+            },
+            {
+              "name": "skip",
+              "value": "0"
+            },
+            {
+              "name": "limit",
+              "value": "100"
+            }
+          ]
+        }
+      },
+      "id": "c7677481-c9af-5dd2-abb9-0004a2091fb5",
+      "name": "Read Contact Case Relations",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2050,
+        -100
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "EvW1batWWwk4xdQV",
+          "name": "RelayCart Demo HighLevel PIT"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ce218400-6e05-5b63-9e7c-c62265cb86f3",
+              "leftValue": "={{ $json.statusCode >= 200 && $json.statusCode < 300 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "38a287f9-9585-54de-a87b-524115c6e5b3",
+      "name": "Relations Read Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2300,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "bb7036fe-d8d9-5421-b2d6-105a70a1521b",
+              "leftValue": "={{ ($json.body?.relations||[]).some(r=>r.secondRecordId===$('Persist Remote ID Before Association').item.json.ghl_record_id && r.associationId==='6abb11b64427829e84164de5') }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "1c291083-ba45-55ee-834a-3253d8ed826a",
+      "name": "Association Already Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2540,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://services.leadconnectorhq.com/associations/relations",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Version",
+              "value": "v3"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ { locationId: 'CP8Flhg4iyKzzm6vlOgu', associationId: '6abb11b64427829e84164de5', firstRecordId: $('Load Incident And Contact Mapping').item.json.contact_id, secondRecordId: $('Persist Remote ID Before Association').item.json.ghl_record_id } }}"
+      },
+      "id": "b8c477ed-77b8-5ed2-9df6-77422a2f41ed",
+      "name": "Create Contact Case Association",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2780,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "EvW1batWWwk4xdQV",
+          "name": "RelayCart Demo HighLevel PIT"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "254a1472-e622-5f16-ab3c-001caaa34434",
+              "leftValue": "={{ $json.statusCode >= 200 && $json.statusCode < 300 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "2abd2516-9ff1-5197-8410-70b00052a3d8",
+      "name": "Association Write Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3020,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE ghl_effects SET status='SUCCEEDED',attempt_count=attempt_count+1,last_error=NULL,updated_at=NOW() WHERE effect_id=$1 AND status='PROCESSING' RETURNING effect_id,status;",
+        "options": {
+          "queryReplacement": "={{ [$('Load Incident And Contact Mapping').item.json.effect_id] }}"
+        }
+      },
+      "id": "cdceace7-34eb-5d5d-a92f-f8051a7ad4c3",
+      "name": "Mark Effect Succeeded",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        3260,
+        -160
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "dJp5v4e6qmyffUpN",
+          "name": "RelayCart Phase 2 Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE ghl_effects SET status='RETRY',attempt_count=attempt_count+1,next_attempt_at=NOW()+CASE WHEN $2::integer=429 THEN interval '90 seconds' ELSE interval '45 seconds' END,last_error=left('HighLevel request failed; HTTP '||coalesce($2::text,'controlled 503 or network error'),200),updated_at=NOW() WHERE effect_id=$1 AND status='PROCESSING' RETURNING effect_id,status,next_attempt_at;",
+        "options": {
+          "queryReplacement": "={{ [$('Load Incident And Contact Mapping').item.json.effect_id, $json.statusCode || null] }}"
+        }
+      },
+      "id": "6c92c5cc-c676-5f09-8b70-75996065a4bd",
+      "name": "Mark Effect RETRY",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        3260,
+        180
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "dJp5v4e6qmyffUpN",
+          "name": "RelayCart Phase 2 Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 1,
+        "unit": "seconds"
+      },
+      "id": "fe338bac-7e81-56f5-b8bd-38caf9f9ee97",
+      "name": "Rate Control Before Next Customer",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        3500,
+        0
+      ]
     }
   ],
   "connections": {
-    "Reconcile Schedule": {"main": [[{"node": "Reconcile Customer Effects", "type": "main", "index": 0}]]},
-    "Manual Sync Webhook": {"main": [[{"node": "Reconcile Customer Effects", "type": "main", "index": 0}]]}
+    "Reconcile Every 30 Seconds": {
+      "main": [
+        [
+          {
+            "node": "Enqueue Subscribed Customers Atomically",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Reconciliation": {
+      "main": [
+        [
+          {
+            "node": "Enqueue Subscribed Customers Atomically",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enqueue Subscribed Customers Atomically": {
+      "main": [
+        [
+          {
+            "node": "Claim Three Due Effects",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Three Due Effects": {
+      "main": [
+        [
+          {
+            "node": "One Customer At A Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One Customer At A Time": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Load Incident And Contact Mapping",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Incident And Contact Mapping": {
+      "main": [
+        [
+          {
+            "node": "Controlled 503 Fixture?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Controlled 503 Fixture?": {
+      "main": [
+        [
+          {
+            "node": "Simulate HighLevel HTTP 503",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Search Case By Deterministic Key",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simulate HighLevel HTTP 503": {
+      "main": [
+        [
+          {
+            "node": "Mark Effect RETRY",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Case By Deterministic Key": {
+      "main": [
+        [
+          {
+            "node": "Case Search Succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Case Search Succeeded?": {
+      "main": [
+        [
+          {
+            "node": "Exact Case Key Match",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Effect RETRY",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Exact Case Key Match": {
+      "main": [
+        [
+          {
+            "node": "Case Already Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Case Already Exists?": {
+      "main": [
+        [
+          {
+            "node": "Update Existing Service Case",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Missing Service Case",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Existing Service Case": {
+      "main": [
+        [
+          {
+            "node": "Case Write Succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Missing Service Case": {
+      "main": [
+        [
+          {
+            "node": "Case Write Succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Case Write Succeeded?": {
+      "main": [
+        [
+          {
+            "node": "Persist Remote ID Before Association",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Effect RETRY",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist Remote ID Before Association": {
+      "main": [
+        [
+          {
+            "node": "Read Contact Case Relations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Contact Case Relations": {
+      "main": [
+        [
+          {
+            "node": "Relations Read Succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Relations Read Succeeded?": {
+      "main": [
+        [
+          {
+            "node": "Association Already Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Effect RETRY",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Association Already Exists?": {
+      "main": [
+        [
+          {
+            "node": "Mark Effect Succeeded",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Contact Case Association",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Contact Case Association": {
+      "main": [
+        [
+          {
+            "node": "Association Write Succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Association Write Succeeded?": {
+      "main": [
+        [
+          {
+            "node": "Mark Effect Succeeded",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Effect RETRY",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Effect Succeeded": {
+      "main": [
+        [
+          {
+            "node": "Rate Control Before Next Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Effect RETRY": {
+      "main": [
+        [
+          {
+            "node": "Rate Control Before Next Customer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rate Control Before Next Customer": {
+      "main": [
+        [
+          {
+            "node": "One Customer At A Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "settings": {"executionOrder": "v1", "timezone": "UTC", "saveExecutionProgress": true},
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "UTC",
+    "saveExecutionProgress": true
+  },
   "active": false
 }

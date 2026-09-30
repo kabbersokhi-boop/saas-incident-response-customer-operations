@@ -15,7 +15,6 @@ from pydantic import BaseModel, Field
 from psycopg.types.json import Jsonb
 
 from .db import get_connection, incident_workflow_schema_available, initialize_schema
-from .customer_ops import poll_feedback, sync as sync_customer_impact
 from .seed import (
     BAD_VERSION,
     CURRENT_VERSION,
@@ -58,23 +57,6 @@ class RollbackRequest(BaseModel):
 
 class CheckoutFaultRequest(BaseModel):
     enabled: bool
-
-
-@app.post("/customer-ops/sync")
-def customer_impact_sync(simulate_503: bool = False) -> dict:
-    """Local n8n orchestration entrypoint; a GHL failure never mutates the incident."""
-    try:
-        return sync_customer_impact(simulate_503=simulate_503)
-    except RuntimeError as error:
-        raise HTTPException(status_code=503, detail=str(error)) from error
-
-
-@app.post("/customer-ops/poll-feedback")
-def customer_recovery_poll() -> dict:
-    try:
-        return poll_feedback()
-    except RuntimeError as error:
-        raise HTTPException(status_code=503, detail=str(error)) from error
 
 
 @app.get("/customer-ops/recovery")
