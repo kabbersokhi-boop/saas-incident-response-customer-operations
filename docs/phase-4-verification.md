@@ -1,5 +1,7 @@
 # Phase 4 proof record
 
+Launch follow-up: the [2026-10-01 location-wide audit](evidence/portfolio/launch-audit.md) found and removed 22 older orphan RelayCart tasks that the current-contact audit below could not see. Cases and contacts remained unchanged. The strengthened verifier now searches the whole location and proves one current Ocean task and zero older RelayCart tasks. The original engineering observations below remain historical evidence.
+
 Verified on 2026-10-01 in the local synthetic environment. Starting/public baseline: `c5d83a5c3ae6894adba20763a63de8ba0e369276` (`Move GHL customer orchestration into n8n`). Git fetch found no later correction and the starting tree was clean. Architecture remains unchanged.
 
 ## Baseline and reproduction

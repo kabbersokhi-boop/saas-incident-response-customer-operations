@@ -82,6 +82,27 @@ def main() -> None:
         print("cases", len(rows), "green_dental_cases", control, "status_counts", statuses)
         if statuses != {"CONFIRMED_RESOLVED": 1, "AWAITING_CONFIRMATION": 16, "NEEDS_FOLLOW_UP": 1}:
             raise RuntimeError("Final customer status split differs from 16/1/1")
+        # Contact-scoped reads cannot find tasks orphaned by deleted test contacts.
+        # Exhaust the entire location inventory without a contact/status filter.
+        location_tasks = []
+        skip = 0
+        while True:
+            batch = _request(client, "POST", f"/locations/{location}/tasks/search",
+                             json={"limit": 100, "skip": skip}).get("tasks", [])
+            location_tasks.extend(batch)
+            if len(batch) < 100:
+                break
+            skip += len(batch)
+        relaycart_tasks = [task for task in location_tasks
+                          if str(task.get("title", "")).startswith("RelayCart follow-up · INC-")
+                          and task.get("deleted") is not True]
+        ocean_contact = next(row["contact_id"] for row in rows
+                             if row["customer_key"] == "ocean-apparel-02")
+        if (len(relaycart_tasks) != 1 or
+                relaycart_tasks[0].get("title") != f"RelayCart follow-up · {incident_id}" or
+                relaycart_tasks[0].get("contactId") != ocean_contact):
+            raise RuntimeError("Location-wide RelayCart task inventory must contain only current Ocean task")
+        print("location_wide_relaycart_tasks=1 current_ocean_tasks=1 older_relaycart_tasks=0")
         print("remote_inventory=18 mapped_synthetic_contacts=30 mapped_phones=0 unmapped_contacts=" +
               str(len(contacts)-len(mapped_contacts)) + " audit=PASS")
 

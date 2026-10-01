@@ -1,6 +1,6 @@
 # Curated visual evidence
 
-The final portfolio uses eight screenshots plus two supplemental workflow graphs. Images never replace the reproducible assertions in [Phase 4 verification](../phase-4-verification.md).
+The hiring-facing README now uses the [six-image portfolio selection](portfolio/README.md). The [launch audit](portfolio/launch-audit.md) records a location-wide orphan task cleanup and strengthens the task evidence beyond the contact-scoped Phase 4 audit. The images below remain engineering/historical evidence. Images never replace the reproducible assertions in [Phase 4 verification](../phase-4-verification.md).
 
 | Asset | Type | Meaning / provenance |
 | --- | --- | --- |
