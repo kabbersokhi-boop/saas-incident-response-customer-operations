@@ -42,7 +42,7 @@ def main():
             fit.click()
             page.wait_for_timeout(1500)
             page.screenshot(path=str(OUT / filename))
-        page.set_viewport_size({'width':1600, 'height':1100})
+        page.set_viewport_size({'width':1280, 'height':1100})
         page.goto('http://127.0.0.1:8001')
         page.locator('#customer-recovery-panel').wait_for()
         page.wait_for_function("document.querySelector('#customer-recovery-panel').innerText.includes('CONFIRMED_RESOLVED')")
