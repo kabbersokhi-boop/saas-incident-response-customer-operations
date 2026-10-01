@@ -55,20 +55,17 @@ flowchart TB
 ## Architecture and ownership
 
 ```mermaid
-flowchart LR
-    App["FastAPI / RelayCart<br/>deterministic SaaS failures"] -->|events| Technical
-    subgraph Automation["n8n — visible orchestration"]
-        Technical["Incident intake + investigation"] --> Action["Approval + remediation + verification"]
-        Action --> Customer["Customer impact + feedback sync"]
-    end
-    Automation <-->|durable state + effect leases| DB[(PostgreSQL)]
-    Technical <-->|bounded evidence / validated advice| NIM["NVIDIA NIM"]
-    Action -->|version-bound rollback + business checks| App
-    Customer <-->|case writes / associations / replies / tasks| Cases
-    subgraph CRM["GoHighLevel — customer operations"]
-        Cases["Contacts ↔ Service Cases"] --> Native["Native workflows + Conversation AI"]
-        Native --> Followup["Customer confirmation + human tasks"]
-    end
+flowchart TB
+    App["FastAPI / RelayCart<br/>releases • health • checkout • orders"]
+    Orchestrator["n8n — visible orchestration<br/>intake • investigation • approval<br/>rollback • verification<br/>customer impact • feedback"]
+    DB[("PostgreSQL<br/>durable state + effect leases")]
+    NIM["NVIDIA NIM<br/>bounded technical advice"]
+    GHL["GoHighLevel<br/>Contacts ↔ Service Cases<br/>native workflows • Conversation AI<br/>customer confirmation • human tasks"]
+    App -->|events| Orchestrator
+    Orchestrator -->|rollback + business verification| App
+    DB <-->|durable state| Orchestrator
+    Orchestrator <-->|evidence / validated advice| NIM
+    Orchestrator <-->|cases / associations / replies / tasks| GHL
 ```
 
 | Platform | Responsibility |
