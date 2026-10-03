@@ -1,6 +1,6 @@
 # RelayCart — SaaS Incident Response & Customer Operations Automation
 
-A deployment can complete while the product is broken. RelayCart carries that failure through investigation, human-approved rollback, business recovery checks, and customer confirmation.
+Restore a revenue-critical checkout journey—and make sure affected customers do not fall through the engineering–support gap.
 
 [![Public deterministic checks](https://github.com/kabbersokhi-boop/saas-incident-response-customer-operations/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/kabbersokhi-boop/saas-incident-response-customer-operations/actions/workflows/ci.yml)
 ![n8n](https://img.shields.io/badge/n8n-orchestration-EA4B71)
@@ -9,7 +9,13 @@ A deployment can complete while the product is broken. RelayCart carries that fa
 ![NVIDIA NIM](https://img.shields.io/badge/NVIDIA_NIM-advisory_AI-76B900)
 ![GoHighLevel](https://img.shields.io/badge/GoHighLevel-customer_operations-2563EB)
 
-Six n8n workflows connect a reproducible SaaS environment to live GoHighLevel customer operations. **The incident can be recovered while a customer still needs help.** This project makes both states visible—and protects the boundary between them.
+## The business problem
+
+When a commerce SaaS platform's checkout breaks, merchants cannot complete sales. Engineering may restore the service, but support still needs to know **which customers were affected, whether they can transact again, and who needs help**. Closing the technical incident alone leaves that customer work unresolved.
+
+RelayCart connects incident response to customer operations: safely restore checkout, create affected-customer cases in GoHighLevel, request confirmation, and route unresolved customers to human follow-up. Engineering gets verified recovery evidence; support gets customer-level status and actionable tasks.
+
+**The incident can be recovered while a customer still needs help.** Six n8n workflows connect the reproducible SaaS environment to live GoHighLevel so both states remain visible. This synthetic demo demonstrates that handoff; it does not claim measured revenue recovery or production results.
 
 ## Watch the end-to-end demo
 
@@ -31,12 +37,6 @@ Six n8n workflows connect a reproducible SaaS environment to live GoHighLevel cu
 **Demo scope:** local synthetic SaaS and orders; actual n8n executions and live GoHighLevel records. Fresh synthetic replies use the native LiveChat test API—not production outreach. The actual NIM response failed schema validation; the approved rollback and recovery checks still completed successfully. Historical cases and tasks were preserved.
 
 [Screenshot walkthrough](docs/portfolio-demo.md) · [Inspect the workflows](n8n/workflows) · [Safety and retry proof](#safety-and-failure-proof) · [Evidence provenance](docs/evidence/portfolio/README.md)
-
-## Why this exists
-
-A successful deploy response does not prove the application is healthy. A green health endpoint does not prove checkout works. A successful rollback response does not prove the business recovered. And technical recovery does not prove every customer is resolved.
-
-RelayCart tests each boundary separately: correlate independent signals, bind an approved action to exact releases, verify an actual checkout and order read-back, then track customer outcomes independently.
 
 ## Technical Recovery ≠ Customer Resolution
 
