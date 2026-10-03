@@ -65,4 +65,4 @@ Each execution below was checked for successful status and association with the 
 
 [Scoped outcome verification](evidence/portfolio/demo/verification.json) records the four passing checks, consumed approval, 18 cases, 16/1/1 outcomes, correct Contact associations and one new task. This is recorded-run evidence, not a production guarantee. Retry, replay, stale-approval and provider-failure tests are documented separately in [Phase 4 verification](phase-4-verification.md).
 
-The MP4 is silent, H.264, 1920×1080 at 30 fps, with embedded chapters. Idle/loading time was removed and short final-frame holds added. No desktop, browser tabs, address bar, approval tokens or credentials are included.
+The MP4 is H.264, 1920×1080 at 30 fps, with embedded chapters for navigation.

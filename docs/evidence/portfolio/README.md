@@ -25,7 +25,7 @@ No image is an AI-generated or reconstructed UI. The Mermaid diagrams in the roo
 
 **Verification:** read-only database and live GHL checks confirmed the exact incident, four passing checks, consumed approval, 18 current cases, 16/1/1 customer outcomes, Contact associations and one current-incident Ocean task. All six n8n executions were matched to this incident. The export decoded without errors; all 24 chapter starts, middles and ends were visually reviewed.
 
-**Privacy:** only reviewed final-video frames and the final MP4 were published. Browser profiles, cookies, raw recordings and private preparation evidence stay outside the repository. No desktop, browser chrome, approval tokens, credential values, unrelated contacts, inboxes or personal contact fields are shown. Mapped customers are synthetic; their email addresses use `example.test` and they have no phone numbers.
+**Demo data:** mapped customers are synthetic; their email addresses use `example.test` and they have no phone numbers.
 
 **Preservation:** the previous `INC-F25410A828C8` incident, its 18 cases and its support task remain intact. Counts and the one-task result are scoped to the new recorded incident—not the entire location. No reset, deletion or unrelated workflow change was used for this recording.
 
