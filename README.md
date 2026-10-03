@@ -9,11 +9,28 @@ A deployment can complete while the product is broken. RelayCart carries that fa
 ![NVIDIA NIM](https://img.shields.io/badge/NVIDIA_NIM-advisory_AI-76B900)
 ![GoHighLevel](https://img.shields.io/badge/GoHighLevel-customer_operations-2563EB)
 
-![Real RelayCart dashboard: recovered incident, Acme confirmed, Ocean follow-up, and Green Dental unaffected](docs/evidence/portfolio/relaycart-final-recovery.png)
+Six n8n workflows connect a reproducible SaaS environment to live GoHighLevel customer operations. **The incident can be recovered while a customer still needs help.** This project makes both states visible—and protects the boundary between them.
 
-Six n8n workflows coordinate a deterministic FastAPI SaaS, PostgreSQL, NVIDIA NIM, and a live GoHighLevel demo location. The incident above has recovered, but Ocean Apparel still needs human support. All customer data and failures are synthetic; no real customer messaging, payments, or production deployments are connected.
+## Watch the end-to-end demo
 
-[Inspect the workflows](n8n/workflows) · [Read the proof record](docs/phase-4-verification.md) · [Run the five-minute demo](docs/demo-script.md) · [Evidence provenance](docs/evidence/portfolio/README.md)
+[![RelayCart demo preview: checkout failure, exact human approval, native GHL workflows and customer recovery](docs/evidence/portfolio/demo/demo-preview.gif)](https://github.com/kabbersokhi-boop/saas-incident-response-customer-operations/raw/refs/heads/main/docs/evidence/portfolio/demo/RelayCart-End-to-End-Demo.mp4)
+
+**[Watch / download the full demo — 3:25, 1080p MP4](https://github.com/kabbersokhi-boop/saas-incident-response-customer-operations/raw/refs/heads/main/docs/evidence/portfolio/demo/RelayCart-End-to-End-Demo.mp4)** · One edited recording, silent and ready for voiceover. The looping preview is only a sample.
+
+| Time | What happens | What it demonstrates |
+| --- | --- | --- |
+| 0:06 | Run a healthy checkout, then deploy the broken release | Deployment completion is not business success |
+| 0:29 | Correlate failures and investigate with NIM | One SEV-2; invalid AI output is rejected, not granted authority |
+| 0:54 | Review and approve the exact rollback | Single-use, release-bound human approval |
+| 1:13 | Inspect successful remediation and all four recovery checks | Version, health, checkout creation and order read-back |
+| 1:38 | Sync and inspect 18 live GoHighLevel Service Cases | Live CRM cases, Contact associations and durable fanout |
+| 1:54 | Open all three published native GHL workflows | Intake → technical recovery → Conversation AI confirmation |
+| 2:33 | Inspect feedback, customer cases and the follow-up task | Acme resolved; Ocean needs help; technical recovery stays intact |
+| 3:07 | Review the final customer dashboard | 1 resolved, 1 follow-up, 16 awaiting; control unaffected |
+
+**Demo scope:** local synthetic SaaS and orders; actual n8n executions and live GoHighLevel records. Fresh synthetic replies use the native LiveChat test API—not production outreach. The actual NIM response failed schema validation; the approved rollback and recovery checks still completed successfully. Historical cases and tasks were preserved.
+
+[Screenshot walkthrough](docs/portfolio-demo.md) · [Inspect the workflows](n8n/workflows) · [Safety and retry proof](#safety-and-failure-proof) · [Evidence provenance](docs/evidence/portfolio/README.md)
 
 ## Why this exists
 
@@ -23,7 +40,9 @@ RelayCart tests each boundary separately: correlate independent signals, bind an
 
 ## Technical Recovery ≠ Customer Resolution
 
-The [dashboard above](docs/evidence/portfolio/relaycart-final-recovery.png) shows the final incident, `INC-F25410A828C8`, and its customer outcomes:
+![Recorded RelayCart dashboard: recovered incident, Acme confirmed, Ocean follow-up and Green Dental unaffected](docs/evidence/portfolio/demo/16-customer-outcomes.png)
+
+The recorded incident, `INC-7E39998CA856`, finishes with these independently verified outcomes:
 
 | Scope | Technical state | Customer state | Human tasks |
 | --- | --- | --- | --- |
@@ -80,9 +99,9 @@ flowchart TB
 
 Independent events survive deduplication and correlate to one incident. Severity is deterministic. Investigation joins persisted signals with a current application snapshot and bounds the evidence before requesting NIM advice.
 
-![Real n8n editor: IR 02 bounds evidence, calls NVIDIA NIM, validates advice, and applies deterministic policy](docs/evidence/portfolio/n8n-technical-response.png)
+![Successful n8n investigation execution: bounded evidence, NIM call, schema validation and deterministic approval policy](docs/evidence/portfolio/demo/03-investigation-success.png)
 
-*IR 02 — Evidence and NIM Investigation. [Open the real editor capture at full resolution](docs/evidence/portfolio/n8n-technical-response.png).*
+*IR 02 — successful orchestration, not a claim of valid model output. This run rejected the response schema and kept the human approval gate enforced. [Full-resolution execution](docs/evidence/portfolio/demo/03-investigation-success.png).*
 
 NVIDIA NIM investigates. It does not decide severity, authorize rollback, or execute production actions. `openai/gpt-oss-20b` returns advice; n8n validates JSON shape, enums, permitted read checks, and cited evidence IDs. Hostile log text remains evidence, never an instruction granting authority.
 
@@ -101,31 +120,45 @@ An operator approves the exact source/target release pair. Approval expires afte
 
 PostgreSQL enqueues subscribed customers and leases due effects. n8n processes each customer, searches GHL by a deterministic case key, creates or updates the Service Case, persists its remote ID, checks the Contact association, and records success or durable retry. A lost local ID is repaired by rediscovering the same remote case.
 
-![Real n8n editor: Postgres claims, customer loop, GHL case lookup/create/update, association, and success/retry branches](docs/evidence/portfolio/n8n-ghl-impact-sync.png)
+![Successful n8n customer impact sync with durable claims, GHL case reconciliation and success/retry branches](docs/evidence/portfolio/demo/06-impact-sync-success.png)
 
-*[Full-resolution editor capture](docs/evidence/portfolio/n8n-ghl-impact-sync.png) · [24-node workflow export](n8n/workflows/06-ghl-customer-impact-sync.json)*
+*[Recorded successful execution](docs/evidence/portfolio/demo/06-impact-sync-success.png) · [24-node workflow export](n8n/workflows/06-ghl-customer-impact-sync.json)*
 
 ### GHL 02 — Customer Recovery Feedback
 
 n8n reads outcome markers, finds the conversation, and validates a fresh inbound reply against the recovery time. Positive and negative branches update the case; negative feedback checks for an existing task before creating one. PostgreSQL persists the outcome, and only transient result tags are cleared. Unavailable reads preserve retryable state.
 
-![Real n8n editor: conversation and fresh reply validation, outcome branches, task handling, status persistence, and tag cleanup](docs/evidence/portfolio/n8n-ghl-feedback.png)
+![Successful n8n feedback execution with positive and negative outcomes, task handling and status persistence](docs/evidence/portfolio/demo/12-feedback-success.png)
 
-*[Full-resolution editor capture](docs/evidence/portfolio/n8n-ghl-feedback.png) · [28-node workflow export](n8n/workflows/07-ghl-customer-feedback.json)*
+*[Recorded successful execution](docs/evidence/portfolio/demo/12-feedback-success.png) · [28-node workflow export](n8n/workflows/07-ghl-customer-feedback.json)*
 
 These workflows make the cross-platform calls directly. PostgreSQL supplies durable correctness; Python supplies the SaaS environment and audit helpers. The full graphs remain inspectable in the exports, including failure paths.
 
-### Native customer operations
+### GoHighLevel: the customer operations layer
 
-RelayCart Demo contains 30 mapped synthetic contacts and a real Service Case Custom Object with 14 fields and Contact associations. Checkout subscriptions select 18 customers; Green Dental is a non-subscriber control. Native HighLevel workflows hand recovery to the published **RelayCart — Customer Recovery Confirmation** Conversation AI workflow.
+GoHighLevel is more than a destination for incident data. It holds the **Service Case Custom Object**, its Contact associations, native recovery workflows, customer confirmation and human follow-up tasks. RelayCart Demo has 30 mapped synthetic contacts; checkout subscriptions select 18 customers, while Green Dental is a non-subscriber control.
 
-![Historical real GoHighLevel UI showing the RelayCart Service Case object and 18 synthetic records](docs/evidence/portfolio/ghl-service-cases.png)
+![Current live GoHighLevel Service Case list filtered to the recorded incident: 18 synthetic customer cases](docs/evidence/portfolio/demo/07-live-service-cases.png)
 
-*Historical Phase 3 UI, incident `INC-57C615E767C3`. The current 18 cases and 16/1/1 split are independently API-verified; this image is not a current incident capture.*
+*Live list filtered to the recorded incident. Each case tracks technical status separately from customer status; older incident records remain intact. [Resolved case, follow-up case and task screenshots](docs/portfolio-demo.md#4-customer-confirmation-and-human-follow-up).*
 
-![Historical real HighLevel Customer Recovery Confirmation workflow with Conversation AI, working, still-broken, and timeout branches](docs/evidence/portfolio/ghl-conversation-ai-workflow.png)
+### Three published native GHL workflows
 
-*Historical real workflow capture. The current HighLevel browser view failed to render during the launch pass, so this retained evidence is explicitly dated by provenance. It shows the native workflow and AI panel, not the original generation transcript. [Capture details and privacy notes](docs/evidence/portfolio/README.md).*
+The video opens all three actual workflow builders. These are native GoHighLevel automations—not exported diagrams or replacement n8n canvases.
+
+| Native workflow | Trigger and handoff |
+| --- | --- |
+| **Service Case Intake** | A Service Case is created → add the intake note |
+| **Technical Recovery** | Case technical status becomes `RECOVERED` → update the case and enroll associated records in the next workflow |
+| **Customer Recovery Confirmation** | Contact receives the recovery-ready tag → ask whether checkout works; branch on working, still broken, timeout or fallback |
+
+![Published native GoHighLevel Service Case Intake workflow: created-case trigger and note action](docs/evidence/portfolio/demo/08-ghl-service-case-intake.png)
+
+![Published native GoHighLevel Technical Recovery workflow: recovered-case trigger, case update and associated-record handoff](docs/evidence/portfolio/demo/09-ghl-technical-recovery.png)
+
+![Published native GoHighLevel Customer Recovery Confirmation workflow: Conversation AI with explicit outcome branches](docs/evidence/portfolio/demo/10-ghl-customer-confirmation.png)
+
+**Clear ownership:** native GHL workflows initiate confirmation; n8n validates fresh inbound replies, reconciles case outcomes and deduplicates support tasks; PostgreSQL persists durable state. Conversation AI cannot authorize rollback or turn silence into confirmed resolution. [View the actual question configuration](docs/portfolio-demo.md#3-native-gohighlevel-recovery-handoff).
 
 ## Safety and failure proof
 
@@ -146,16 +179,9 @@ RelayCart Demo contains 30 mapped synthetic contacts and a real Service Case Cus
 
 [Phase 4 verification](docs/phase-4-verification.md) records observed tests, reproduction commands, and limits. [Launch audit](docs/evidence/portfolio/launch-audit.md) records the exact orphan cleanup. Public CI tests deterministic boundaries; it does not verify private live integrations or establish AI accuracy.
 
-## 5-Minute Demo
+## Reproduce the demo
 
-1. Show healthy `v1.8.1` and perform a normal checkout.
-2. Deploy `v1.8.2`; observe deployment completion alongside health and checkout failures.
-3. Inspect one correlated SEV-2 incident and the bounded NIM assessment.
-4. Approve the exact rollback and inspect version, health, checkout, and order read-back checks.
-5. Show 18 recovered GHL Service Cases and the unaffected Green Dental control.
-6. Demonstrate Acme confirmation and Ocean follow-up while the incident remains recovered.
-
-The [demo script](docs/demo-script.md) includes exact actions and timing. Running it changes demo state; the published captures preserve the completed incident.
+The [five-minute demo script](docs/demo-script.md) provides exact actions and timing for a new run. The [recorded walkthrough](docs/portfolio-demo.md) explains the published video. Running the live demo changes demo state; viewing the video does not.
 
 ## Quick start
 

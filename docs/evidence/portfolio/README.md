@@ -1,8 +1,35 @@
 # Portfolio evidence index
 
-Six retained images support the [root portfolio page](../../../README.md). Every image is a real application/editor screenshot. None is an AI-generated image, reconstructed UI, or rendered workflow diagram. The two Mermaid diagrams in the root README are authored explanatory diagrams, not application evidence.
+The [root portfolio page](../../../README.md) now leads with the **2026-10-03 recorded demo**, `INC-7E39998CA856`. The [walkthrough](../../portfolio-demo.md) explains the exact sequence and platform boundaries. Current images are frames from the reviewed video; older captures remain available below as historical engineering evidence.
 
-## Capture provenance
+No image is an AI-generated or reconstructed UI. The Mermaid diagrams in the root README explain the architecture; they are not application evidence.
+
+## Current recorded demo
+
+| Asset | What it shows |
+| --- | --- |
+| [Complete MP4](demo/RelayCart-End-to-End-Demo.mp4) · [Preview GIF](demo/demo-preview.gif) · [Poster](demo/demo-poster.png) | One edited 3:25 story, including all six n8n paths and all three published native GHL workflows |
+| [Healthy checkout](demo/01-healthy-checkout.png) · [Failed deployment](demo/02-failed-deployment.png) | Healthy order creation followed by deployment completion with business failure |
+| [Investigation execution](demo/03-investigation-success.png) · [Exact approval](demo/04-human-approval.png) | Actual schema rejection, deterministic policy and human authorization boundary |
+| [Four recovery checks](demo/05-verified-recovery.png) | Final release, health, checkout creation and order read-back all pass |
+| [Impact-sync execution](demo/06-impact-sync-success.png) · [18 live cases](demo/07-live-service-cases.png) | Durable reconciliation into GHL, filtered to the recorded incident |
+| [Native intake](demo/08-ghl-service-case-intake.png) · [Native recovery](demo/09-ghl-technical-recovery.png) | Created-case note and recovered-case handoff through actual published GHL builders |
+| [Native confirmation](demo/10-ghl-customer-confirmation.png) · [Actual question](demo/11-ghl-conversation-ai-question.png) | Native Conversation AI, LiveChat configuration and explicit outcome branches |
+| [Feedback execution](demo/12-feedback-success.png) | Actual successful positive/negative reply handling and task reconciliation |
+| [Acme confirmed](demo/13-acme-confirmed.png) · [Ocean follow-up](demo/14-ocean-follow-up.png) · [One scoped task](demo/15-follow-up-task.png) | Technical/customer status separation and human support ownership |
+| [Final dashboard](demo/16-customer-outcomes.png) · [Scoped verification](demo/verification.json) | 18 affected, 1 confirmed, 1 follow-up, 16 awaiting; unaffected control; older records preserved |
+
+**Source:** authenticated browser-page capture at 1600×900, edited into a 1920×1080 MP4 at 30 fps. PNGs are full-output video frames; the editorial headings and scope captions are part of the video, not native application UI. The GIF is a short selection of reviewed chapters, not the full demo. No workflow or field was modified to improve its screenshot.
+
+**Scope:** SaaS releases and orders are local synthetic operations; n8n executions and GHL API records are real. Fresh synthetic replies use the native LiveChat API test transport. The actual NIM response was rejected for an invalid schema, with no approval bypass. The successful investigation execution proves orchestration completion, not validated AI output.
+
+**Verification:** read-only database and live GHL checks confirmed the exact incident, four passing checks, consumed approval, 18 current cases, 16/1/1 customer outcomes, Contact associations and one current-incident Ocean task. All six n8n executions were matched to this incident. The export decoded without errors; all 24 chapter starts, middles and ends were visually reviewed.
+
+**Privacy:** only reviewed final-video frames and the final MP4 were published. Browser profiles, cookies, raw recordings and private preparation evidence stay outside the repository. No desktop, browser chrome, approval tokens, credential values, unrelated contacts, inboxes or personal contact fields are shown. Mapped customers are synthetic; their email addresses use `example.test` and they have no phone numbers.
+
+**Preservation:** the previous `INC-F25410A828C8` incident, its 18 cases and its support task remain intact. Counts and the one-task result are scoped to the new recorded incident—not the entire location. No reset, deletion or unrelated workflow change was used for this recording.
+
+## Retained launch and historical captures
 
 | File | Source and type | What it proves | Current / historical | Privacy |
 | --- | --- | --- | --- | --- |
@@ -13,11 +40,11 @@ Six retained images support the [root portfolio page](../../../README.md). Every
 | [ghl-service-cases.png](ghl-service-cases.png) | Real HighLevel Service Case list; unchanged copy of [Phase 3 capture](../phase3-ghl-service-case-list.png) | Native Custom Object, RelayCart Demo location, 18 synthetic cases, technical/customer columns | Historical Phase 3: `INC-57C615E767C3`; retained in commit `9e1fd37`. Not a capture of the current incident | Synthetic case list only; no contact emails, phones, unrelated records, credentials, or storage. Some columns are truncated by the original UI |
 | [ghl-conversation-ai-workflow.png](ghl-conversation-ai-workflow.png) | Real native HighLevel workflow; unchanged copy of [Phase 3 capture](../phase3-ghl-workflow-ai-builder.png) | RelayCart — Customer Recovery Confirmation; Conversation AI action, checkout-working, still-broken, timeout and fallback branches; AI panel context | Historical Phase 3, retained in commit `9e1fd37`; current publication checked separately through the API | Workflow canvas only, no inbox/credentials. Does not show the original builder prompt or generation transcript |
 
-The historical assets were deliberately retained because the current HighLevel UI failed to render in the available authenticated browser profiles, including a headed attempt. No workflow was rebuilt or modified to create a screenshot. Historical UI evidence demonstrates structure, while the [launch audit](launch-audit.md) proves current state through live API reads.
+At the October 1 launch, the HighLevel UI failed to render, so the older GHL screenshots were retained with explicit provenance. The October 3 recording resolved browser access and now supplies fresh native workflow and Service Case evidence. The historical files and [launch audit](launch-audit.md) remain unchanged for traceability; they do not describe the new recorded incident.
 
 ## Reproduction
 
-The fresh captures use an existing private Chromium profile with Playwright. The script opens installed workflows, changes only viewport/zoom framing, and clips the actual dashboard. It never executes workflows, modifies data, or exports browser storage.
+The original October 1 static captures used an existing private Chromium profile with Playwright. The script below opens installed workflows, changes only viewport/zoom framing, and clips the actual dashboard. It never executes workflows, modifies data, or exports browser storage. It reproduces static views, not the full October 3 incident recording.
 
 ```bash
 python scripts/capture-portfolio.py --profile /path/to/private/profile --chromium /path/to/chromium

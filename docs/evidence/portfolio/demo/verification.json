@@ -1,0 +1,49 @@
+{
+  "incident": "INC-7E39998CA856",
+  "technical_status": "RECOVERED",
+  "assessment": {
+    "status": "invalid",
+    "validation_errors": [
+      "top-level response keys do not match schema"
+    ]
+  },
+  "approval": {
+    "status": "CONSUMED",
+    "decision": "approve"
+  },
+  "verification_checks": [
+    {
+      "check_name": "version",
+      "passed": true
+    },
+    {
+      "check_name": "health",
+      "passed": true
+    },
+    {
+      "check_name": "synthetic_checkout",
+      "passed": true
+    },
+    {
+      "check_name": "order_readback",
+      "passed": true
+    }
+  ],
+  "live_cases": 18,
+  "customer_outcomes": {
+    "confirmed_resolved": 1,
+    "needs_follow_up": 1,
+    "awaiting_confirmation": 16
+  },
+  "current_incident_tasks": {
+    "acme-bikes": 0,
+    "ocean-apparel-02": 1
+  },
+  "verified_associations": {
+    "acme-bikes": true,
+    "ocean-apparel-02": true
+  },
+  "green_dental_case_count": 0,
+  "mapped_synthetic_contacts_without_phones": 30,
+  "old_incident_and_18_cases_preserved": true
+}
