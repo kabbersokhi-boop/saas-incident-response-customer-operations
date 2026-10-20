@@ -19,12 +19,12 @@ def text(d,xy,value,size=28,color=FG,bold=False,spacing=14):
 def panel(d,box):d.rounded_rectangle(box,radius=20,fill='#121f32',outline='#26364c',width=2)
 def background(scene):
  im=Image.new('RGB',(1920,1080),BG);d=ImageDraw.Draw(im)
- text(d,(96,42),'RELAYCART',25,TEAL,True);text(d,(1400,46),'KABIR SOKHI  /  AUTOMATION',17,MUTED)
+ text(d,(96,42),'RELAYCART',25,TEAL,True);text(d,(1400,46),'INCIDENT RESPONSE / CUSTOMER RECOVERY',17,MUTED)
  d.line((96,98,1824,98),fill='#27364a',width=2)
  kind=scene.get('kind','standard')
  if kind=='close':
-  text(d,(96,185),'SYSTEMS & AUTOMATION',23,TEAL,True)
-  text(d,(96,257),'Kabir Sokhi',88,FG,True)
+  text(d,(96,185),'INCIDENT RESPONSE + CUSTOMER OPERATIONS',23,TEAL,True)
+  text(d,(96,257),'RelayCart',88,FG,True)
   text(d,(96,400),'Reliable systems.\nBetter customer outcomes.',60,FG,True,20)
   text(d,(98,630),'FastAPI   /   n8n   /   PostgreSQL   /   GoHighLevel',26,MUTED)
   text(d,(98,748),'EXPLORE THE PROJECT',20,TEAL,True)

@@ -7,7 +7,7 @@ remains available for inspection of the complete workflow graphs.
 
 The footage shows a synthetic incident using live n8n executions and GoHighLevel
 records. It supports the recorded results; it does not establish production
-revenue impact. First-person narration describes the project author's design.
+revenue impact. Narration describes the project behavior and design.
 
 ## Source and composition
 

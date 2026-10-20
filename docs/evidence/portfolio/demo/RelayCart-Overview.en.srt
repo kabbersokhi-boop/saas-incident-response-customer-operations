@@ -3,8 +3,8 @@
 Checkout is back. But one customer still needs help.
 
 2
-00:00:04,085 --> 00:00:07,131
-That's the gap I built RelayCart to close.
+00:00:04,085 --> 00:00:06,491
+That's the gap RelayCart closes.
 
 3
 00:00:08,300 --> 00:00:12,412
@@ -23,11 +23,11 @@ This release deploys successfully, but checkout fails.
 RelayCart catches that business failure and opens one incident.
 
 7
-00:00:26,567 --> 00:00:29,143
-I made rollback a human decision.
+00:00:26,567 --> 00:00:28,951
+Rollback requires human approval.
 
 8
-00:00:29,243 --> 00:00:36,192
+00:00:29,051 --> 00:00:36,000
 Approval is tied to the exact release change, so a stale approval cannot overwrite a
 newer version.
 
@@ -81,18 +81,18 @@ Workflows coordinate recovery. Postgres preserves state.
 AI advice is validated before it reaches the workflow.
 
 21
-00:01:31,767 --> 00:01:38,332
-I designed for human authorization, verified checkout, and durable customer follow
-up.
+00:01:31,767 --> 00:01:38,823
+RelayCart combines human authorization, verified checkout, and durable customer
+follow up.
 
 22
-00:01:38,432 --> 00:01:40,880
+00:01:38,923 --> 00:01:41,371
 The recorded run shows all three.
 
 23
-00:01:41,767 --> 00:01:46,668
-I'm Kabir. I build reliable automation around customer outcomes.
+00:01:42,200 --> 00:01:46,483
+RelayCart connects safe recovery with customer follow up.
 
 24
-00:01:46,768 --> 00:01:49,216
+00:01:46,583 --> 00:01:49,031
 Explore the project on GitHub.

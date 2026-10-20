@@ -23,7 +23,7 @@
       ],
       "lines": [
         "Checkout is back. But one customer still needs help.",
-        "That's the gap I built RelayCart to close."
+        "That's the gap RelayCart closes."
       ]
     },
     {
@@ -99,7 +99,7 @@
         }
       ],
       "lines": [
-        "I made rollback a human decision.",
+        "Rollback requires human approval.",
         "Approval is tied to the exact release change, so a stale approval cannot overwrite a newer version."
       ]
     },
@@ -265,18 +265,18 @@
         }
       ],
       "lines": [
-        "I designed for human authorization, verified checkout, and durable customer follow up.",
+        "RelayCart combines human authorization, verified checkout, and durable customer follow up.",
         "The recorded run shows all three."
       ]
     },
     {
       "id": "close",
       "duration": 9,
-      "title": "Kabir Sokhi",
-      "eyebrow": "SYSTEMS & AUTOMATION",
+      "title": "RelayCart",
+      "eyebrow": "INCIDENT RESPONSE + CUSTOMER OPERATIONS",
       "kind": "close",
       "lines": [
-        "I'm Kabir. I build reliable automation around customer outcomes.",
+        "RelayCart connects safe recovery with customer follow up.",
         "Explore the project on GitHub."
       ]
     }
