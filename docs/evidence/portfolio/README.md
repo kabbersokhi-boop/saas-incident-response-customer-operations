@@ -1,10 +1,16 @@
 # Portfolio evidence index
 
-The [root portfolio page](../../../README.md) now leads with the **2026-10-03 recorded demo**, `INC-7E39998CA856`. The [walkthrough](../../portfolio-demo.md) explains the exact sequence and platform boundaries. Current images are frames from the reviewed video; older captures remain available below as historical engineering evidence.
+The [root portfolio page](../../../README.md) leads with a **1:50 project overview**, assembled from the original **2026-10-03 recording**, `INC-7E39998CA856`. The [walkthrough](../../portfolio-demo.md) explains the exact sequence and platform boundaries. Current images are frames from the reviewed video; older captures remain available below as historical engineering evidence.
 
 No image is an AI-generated or reconstructed UI. The Mermaid diagrams in the root README explain the architecture; they are not application evidence.
 
-## Current recorded demo
+## Project overview
+
+[Watch the overview](demo/RelayCart-Overview.mp4) · [Preview](demo/overview-preview.gif) · [Poster](demo/overview-poster.png) · [Subtitles](demo/RelayCart-Overview.en.srt) · [Transcript](demo/RelayCart-Overview-transcript.txt)
+
+The overview uses close-ups from the original page captures, including the actual approval action. The two customer cases appear side by side for comparison. Titles, outlines, and the architecture diagram explain the recorded behavior; they are editorial graphics, not native application UI. One caption layer appears below the footage. The underlying incident and customer outcomes remain the same. [Production and review](../../demo-production/overview.md).
+
+## Detailed recorded walkthrough
 
 | Asset | What it shows |
 | --- | --- |

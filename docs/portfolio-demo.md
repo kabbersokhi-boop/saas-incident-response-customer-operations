@@ -1,5 +1,7 @@
 # RelayCart — recorded demo walkthrough
 
+[Watch the 1:50 project overview](https://github.com/kabbersokhi-boop/saas-incident-response-customer-operations/raw/refs/heads/main/docs/evidence/portfolio/demo/RelayCart-Overview.mp4). It follows the business problem, safe recovery, and customer handoff. The timestamps below refer to the detailed 3:25 walkthrough.
+
 [Watch the narrated 3:25 demo](https://github.com/kabbersokhi-boop/saas-incident-response-customer-operations/raw/refs/heads/main/docs/evidence/portfolio/demo/RelayCart-End-to-End-Demo.mp4) · [Back to the project](../README.md) · [Evidence provenance](evidence/portfolio/README.md)
 
 One continuous story: a broken checkout becomes a correlated incident, an operator approves the exact rollback, business checks verify recovery, and live GoHighLevel records distinguish customer confirmation from technical success.

@@ -15,28 +15,26 @@ When a commerce SaaS platform's checkout breaks, merchants cannot complete sales
 
 RelayCart connects incident response to customer operations: safely restore checkout, create affected-customer cases in GoHighLevel, request confirmation, and route unresolved customers to human follow-up. Engineering gets verified recovery evidence; support gets customer-level status and actionable tasks.
 
-**The incident can be recovered while a customer still needs help.** Six n8n workflows connect the reproducible SaaS environment to live GoHighLevel so both states remain visible. This synthetic demo demonstrates that handoff; it does not claim measured revenue recovery or production results.
+**The incident can be recovered while a customer still needs help.** Six n8n workflows connect the reproducible SaaS environment to live GoHighLevel so both states remain visible. The demonstration uses simulated incidents and customers; its results are specific to the recorded run.
 
-## Watch the end-to-end demo
+## See RelayCart in action
 
-[![RelayCart demo preview: checkout failure, exact human approval, native GHL workflows and customer recovery](docs/evidence/portfolio/demo/demo-preview.gif)](https://github.com/kabbersokhi-boop/saas-incident-response-customer-operations/raw/refs/heads/main/docs/evidence/portfolio/demo/RelayCart-End-to-End-Demo.mp4)
+[![RelayCart: checkout is restored, but one customer still needs help](docs/evidence/portfolio/demo/overview-preview.gif)](https://github.com/kabbersokhi-boop/saas-incident-response-customer-operations/raw/refs/heads/main/docs/evidence/portfolio/demo/RelayCart-Overview.mp4)
 
-**[Watch the end-to-end demo — 3:25](https://github.com/kabbersokhi-boop/saas-incident-response-customer-operations/raw/refs/heads/main/docs/evidence/portfolio/demo/RelayCart-End-to-End-Demo.mp4)** · Follow a checkout failure through human-approved recovery, customer confirmation, and support follow-up.
+**[Watch the demo — 1:50](https://github.com/kabbersokhi-boop/saas-incident-response-customer-operations/raw/refs/heads/main/docs/evidence/portfolio/demo/RelayCart-Overview.mp4)** · From a failed checkout to verified recovery and a clear customer handoff.
 
-[Subtitles](docs/evidence/portfolio/demo/RelayCart-End-to-End-Demo.en.srt) · [Transcript](docs/evidence/portfolio/demo/RelayCart-End-to-End-Demo-transcript.txt)
+| Time | See how it works |
+| --- | --- |
+| 0:00 | The service is recovered, but one customer still needs help |
+| 0:17 | A successful deployment breaks checkout |
+| 0:26 | An operator authorizes the exact rollback |
+| 0:44 | Recovery requires a working checkout and a matching order |
+| 1:03 | Two customers get different outcomes; unresolved work becomes a support task |
+| 1:21 | The architecture connects incident response to customer operations |
 
-| Time | What happens | What it demonstrates |
-| --- | --- | --- |
-| 0:06 | Run a healthy checkout, then deploy the broken release | Deployment completion is not business success |
-| 0:29 | Correlate failures and investigate with NIM | One SEV-2; invalid AI output is rejected, not granted authority |
-| 0:54 | Review and approve the exact rollback | Single-use, release-bound human approval |
-| 1:13 | Inspect successful remediation and all four recovery checks | Version, health, checkout creation and order read-back |
-| 1:38 | Sync and inspect 18 live GoHighLevel Service Cases | Live CRM cases, Contact associations and durable fanout |
-| 1:54 | Open all three published native GHL workflows | Intake → technical recovery → Conversation AI confirmation |
-| 2:33 | Inspect feedback, customer cases and the follow-up task | Acme resolved; Ocean needs help; technical recovery stays intact |
-| 3:07 | Review the final customer dashboard | 1 resolved, 1 follow-up, 16 awaiting; control unaffected |
+[Subtitles](docs/evidence/portfolio/demo/RelayCart-Overview.en.srt) · [Transcript](docs/evidence/portfolio/demo/RelayCart-Overview-transcript.txt) · [Detailed walkthrough — 3:25](https://github.com/kabbersokhi-boop/saas-incident-response-customer-operations/raw/refs/heads/main/docs/evidence/portfolio/demo/RelayCart-End-to-End-Demo.mp4)
 
-**Demo scope:** local synthetic SaaS and orders; actual n8n executions and live GoHighLevel records. Fresh synthetic replies use the native LiveChat test API—not production outreach. The actual NIM response failed schema validation; the approved rollback and recovery checks still completed successfully. Historical cases and tasks were preserved.
+**Demo environment:** simulated checkout failures and customer replies, connected to live n8n and GoHighLevel. Recovery required human approval and four passing checks. The AI response was rejected during validation; it did not authorize the rollback.
 
 [Screenshot walkthrough](docs/portfolio-demo.md) · [Inspect the workflows](n8n/workflows) · [Safety and retry proof](#safety-and-failure-proof) · [Evidence provenance](docs/evidence/portfolio/README.md)
 
@@ -146,7 +144,7 @@ GoHighLevel is more than a destination for incident data. It holds the **Service
 
 ### Three published native GHL workflows
 
-The video opens all three actual workflow builders. These are native GoHighLevel automations—not exported diagrams or replacement n8n canvases.
+The [detailed walkthrough](docs/portfolio-demo.md#3-native-gohighlevel-recovery-handoff) opens all three workflow builders. These are native GoHighLevel automations—not exported diagrams or replacement n8n canvases.
 
 | Native workflow | Trigger and handoff |
 | --- | --- |

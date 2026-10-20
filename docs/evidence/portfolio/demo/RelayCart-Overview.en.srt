@@ -1,0 +1,98 @@
+1
+00:00:00,300 --> 00:00:03,985
+Checkout is back. But one customer still needs help.
+
+2
+00:00:04,085 --> 00:00:07,131
+That's the gap I built RelayCart to close.
+
+3
+00:00:08,300 --> 00:00:12,412
+When checkout fails, engineering must restore the service.
+
+4
+00:00:12,512 --> 00:00:16,667
+Support still needs to know which customers can actually buy again.
+
+5
+00:00:17,467 --> 00:00:21,152
+This release deploys successfully, but checkout fails.
+
+6
+00:00:21,252 --> 00:00:25,748
+RelayCart catches that business failure and opens one incident.
+
+7
+00:00:26,567 --> 00:00:29,143
+I made rollback a human decision.
+
+8
+00:00:29,243 --> 00:00:36,192
+Approval is tied to the exact release change, so a stale approval cannot overwrite a
+newer version.
+
+9
+00:00:37,567 --> 00:00:39,673
+The operator approves once.
+
+10
+00:00:39,773 --> 00:00:44,120
+The system rolls back, then checks whether checkout actually works.
+
+11
+00:00:44,933 --> 00:00:47,189
+A green health check isn't enough.
+
+12
+00:00:47,289 --> 00:00:53,791
+RelayCart also creates a checkout and reads the order back before calling the
+service recovered.
+
+13
+00:00:54,933 --> 00:00:59,963
+Next, eighteen affected customers get linked cases in GoHighLevel.
+
+14
+00:01:00,063 --> 00:01:02,489
+Support can see who needs a response.
+
+15
+00:01:03,300 --> 00:01:07,177
+Acme confirms checkout works. Ocean still needs help.
+
+16
+00:01:07,277 --> 00:01:12,925
+Customer outcomes stay separate, so recovery cannot close an unresolved case.
+
+17
+00:01:13,733 --> 00:01:16,779
+Ocean's reply creates one support task.
+
+18
+00:01:16,879 --> 00:01:21,396
+Unanswered cases stay open. Silence never counts as success.
+
+19
+00:01:22,200 --> 00:01:26,269
+Workflows coordinate recovery. Postgres preserves state.
+
+20
+00:01:26,369 --> 00:01:30,951
+AI advice is validated before it reaches the workflow.
+
+21
+00:01:31,767 --> 00:01:38,332
+I designed for human authorization, verified checkout, and durable customer follow
+up.
+
+22
+00:01:38,432 --> 00:01:40,880
+The recorded run shows all three.
+
+23
+00:01:41,767 --> 00:01:46,668
+I'm Kabir. I build reliable automation around customer outcomes.
+
+24
+00:01:46,768 --> 00:01:49,216
+Explore the project on GitHub.

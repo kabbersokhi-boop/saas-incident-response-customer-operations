@@ -1,0 +1,284 @@
+{
+  "voice": "am_michael",
+  "speed": 1.0,
+  "scenes": [
+    {
+      "id": "hook",
+      "duration": 8,
+      "title": "Checkout is back.\nWho still needs help?",
+      "eyebrow": "THE CUSTOMER GAP",
+      "kind": "wide",
+      "shots": [
+        {
+          "file": "page@87ceed1985255bf835ede08ed3a97a5f.webm",
+          "start": 1380.654,
+          "available": 7,
+          "crop": [
+            280,
+            380,
+            1270,
+            350
+          ]
+        }
+      ],
+      "lines": [
+        "Checkout is back. But one customer still needs help.",
+        "That's the gap I built RelayCart to close."
+      ]
+    },
+    {
+      "id": "problem",
+      "duration": 9,
+      "title": "Two jobs.\nOne incident.",
+      "eyebrow": "THE BUSINESS PROBLEM",
+      "support": [
+        "Restore the service.",
+        "Help the affected customers."
+      ],
+      "shots": [
+        {
+          "file": "page@87ceed1985255bf835ede08ed3a97a5f.webm",
+          "start": 32.5,
+          "available": 7,
+          "crop": [
+            270,
+            105,
+            1280,
+            590
+          ]
+        }
+      ],
+      "lines": [
+        "When checkout fails, engineering must restore the service.",
+        "Support still needs to know which customers can actually buy again."
+      ]
+    },
+    {
+      "id": "failure",
+      "duration": 8,
+      "title": "Deployment passed.\nCheckout failed.",
+      "eyebrow": "DETECT THE REAL FAILURE",
+      "shots": [
+        {
+          "file": "page@87ceed1985255bf835ede08ed3a97a5f.webm",
+          "start": 63.073,
+          "available": 7,
+          "crop": [
+            270,
+            140,
+            1280,
+            590
+          ]
+        }
+      ],
+      "lines": [
+        "This release deploys successfully, but checkout fails.",
+        "RelayCart catches that business failure and opens one incident."
+      ]
+    },
+    {
+      "id": "approval",
+      "duration": 11,
+      "title": "A person\nauthorizes rollback.",
+      "eyebrow": "DESIGN DECISION 01",
+      "support": [
+        "Exact release.",
+        "Single use. Time limited."
+      ],
+      "shots": [
+        {
+          "file": "page@6152af1065a985e010e8cd339374599c.webm",
+          "start": 237.968,
+          "available": 6.5020000000000095,
+          "crop": [
+            375,
+            172,
+            850,
+            450
+          ]
+        }
+      ],
+      "lines": [
+        "I made rollback a human decision.",
+        "Approval is tied to the exact release change, so a stale approval cannot overwrite a newer version."
+      ]
+    },
+    {
+      "id": "action",
+      "duration": 7,
+      "title": "Approve once.\nRecover safely.",
+      "eyebrow": "AUTHORIZE THE RECOVERY",
+      "shots": [
+        {
+          "file": "page@6152af1065a985e010e8cd339374599c.webm",
+          "start": 328.784,
+          "available": 7,
+          "crop": [
+            375,
+            172,
+            850,
+            450
+          ]
+        }
+      ],
+      "lines": [
+        "The operator approves once.",
+        "The system rolls back, then checks whether checkout actually works."
+      ]
+    },
+    {
+      "id": "verification",
+      "duration": 10,
+      "title": "Prove checkout\nworks again.",
+      "eyebrow": "DESIGN DECISION 02",
+      "support": [
+        "Release + health",
+        "Checkout + order read-back"
+      ],
+      "shots": [
+        {
+          "file": "page@87ceed1985255bf835ede08ed3a97a5f.webm",
+          "start": 476.241,
+          "available": 6.5020000000000095,
+          "crop": [
+            920,
+            265,
+            620,
+            300
+          ]
+        }
+      ],
+      "lines": [
+        "A green health check isn't enough.",
+        "RelayCart also creates a checkout and reads the order back before calling the service recovered."
+      ]
+    },
+    {
+      "id": "cases",
+      "duration": 8,
+      "title": "18 customers.\nA visible handoff.",
+      "eyebrow": "CONNECT ENGINEERING TO SUPPORT",
+      "shots": [
+        {
+          "file": "page@bf86d88b5db3778b12d5448a7a1de01a.webm",
+          "start": 905.408,
+          "available": 5.508000000000038,
+          "crop": [
+            235,
+            50,
+            1360,
+            720
+          ]
+        }
+      ],
+      "lines": [
+        "Next, eighteen affected customers get linked cases in GoHighLevel.",
+        "Support can see who needs a response."
+      ]
+    },
+    {
+      "id": "outcomes",
+      "duration": 10,
+      "title": "Same recovery.\nDifferent outcomes.",
+      "eyebrow": "THE DIFFERENCE THAT MATTERS",
+      "kind": "comparison",
+      "shots": [
+        {
+          "file": "page@bf86d88b5db3778b12d5448a7a1de01a.webm",
+          "start": 981.568,
+          "available": 5.507000000000062,
+          "crop": [
+            1100,
+            420,
+            450,
+            205
+          ]
+        },
+        {
+          "file": "page@5347cd35b86a205b77d56f60f5aad916.webm",
+          "start": 76.749,
+          "available": 7,
+          "crop": [
+            1100,
+            420,
+            450,
+            205
+          ]
+        }
+      ],
+      "lines": [
+        "Acme confirms checkout works. Ocean still needs help.",
+        "Customer outcomes stay separate, so recovery cannot close an unresolved case."
+      ]
+    },
+    {
+      "id": "followup",
+      "duration": 8,
+      "title": "Turn replies into\nsupport tasks.",
+      "eyebrow": "DESIGN DECISION 03",
+      "shots": [
+        {
+          "file": "page@5347cd35b86a205b77d56f60f5aad916.webm",
+          "start": 133.717,
+          "available": 7,
+          "crop": [
+            1120,
+            35,
+            460,
+            470
+          ]
+        }
+      ],
+      "lines": [
+        "Ocean's reply creates one support task.",
+        "Unanswered cases stay open. Silence never counts as success."
+      ]
+    },
+    {
+      "id": "architecture",
+      "duration": 9,
+      "title": "Built across\nsystem boundaries.",
+      "eyebrow": "HOW IT FITS TOGETHER",
+      "kind": "architecture",
+      "lines": [
+        "Workflows coordinate recovery. Postgres preserves state.",
+        "AI advice is validated before it reaches the workflow."
+      ]
+    },
+    {
+      "id": "result",
+      "duration": 10,
+      "title": "Recovery verified.\nCustomer work visible.",
+      "eyebrow": "THE RECORDED RESULT",
+      "kind": "wide",
+      "shots": [
+        {
+          "file": "page@87ceed1985255bf835ede08ed3a97a5f.webm",
+          "start": 1380.654,
+          "available": 7,
+          "crop": [
+            280,
+            380,
+            1270,
+            350
+          ]
+        }
+      ],
+      "lines": [
+        "I designed for human authorization, verified checkout, and durable customer follow up.",
+        "The recorded run shows all three."
+      ]
+    },
+    {
+      "id": "close",
+      "duration": 9,
+      "title": "Kabir Sokhi",
+      "eyebrow": "SYSTEMS & AUTOMATION",
+      "kind": "close",
+      "lines": [
+        "I'm Kabir. I build reliable automation around customer outcomes.",
+        "Explore the project on GitHub."
+      ]
+    }
+  ]
+}

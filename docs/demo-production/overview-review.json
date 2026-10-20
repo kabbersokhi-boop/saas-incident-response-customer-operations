@@ -1,0 +1,44 @@
+{
+  "sha256": "14609b950df909087769e7c2068c1e00329ca4ae4c4e48eaf84782620b57597c",
+  "duration": 110.467,
+  "chapters": 12,
+  "resolution": "1920x1080",
+  "decode_errors": 0,
+  "caption_layers": 1,
+  "subtitle_streams": 0,
+  "subtitle_cues": 24,
+  "asr_word_match": 0.943127962085308,
+  "audio_peak": 0.8455047011375427,
+  "minimum_audio_correlation": 0.9999949826305299,
+  "visual_review_frames": 36,
+  "spoken_end": 109.136,
+  "visual_review": "Inspected all twelve chapter starts, middles, and ends; enlarged approval and verification fields, comparison panels, caption band, and closing card.",
+  "browser_playback": {
+    "initial": {
+      "time": 2.015241,
+      "frames": 66,
+      "audioBytes": 49476,
+      "width": 1920,
+      "height": 1080,
+      "error": null
+    },
+    "seek_screenshots": [
+      3,
+      29,
+      40,
+      49,
+      67,
+      77,
+      86,
+      105
+    ],
+    "end_playback": true
+  },
+  "source_recordings": {
+    "page@6152af1065a985e010e8cd339374599c.webm": "3d52acbb7ac3b6b30489c5e242f68c2890d35f353af60cffcc601c19333e049e",
+    "page@87ceed1985255bf835ede08ed3a97a5f.webm": "41086af25d80dc4b5df8bd4e7bd39b204b062848daba8214011ad6474e2b9d3d",
+    "page@bf86d88b5db3778b12d5448a7a1de01a.webm": "48af759e1c5c9c3349740c9fba3021271d36fe5aace1165faec36956c1ea2033",
+    "page@5347cd35b86a205b77d56f60f5aad916.webm": "76c8fcf90462047e0310d23663700dc64ad6d824cb998ffc03c7fb6865acd5d4"
+  },
+  "speech_review": "Automatic transcription checked against the script. No claim of human listening."
+}

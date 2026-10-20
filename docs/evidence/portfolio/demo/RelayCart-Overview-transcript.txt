@@ -1,0 +1,37 @@
+RelayCart — incident response to customer recovery
+
+0:00 — Checkout is back. Who still needs help?
+Checkout is back. But one customer still needs help. That's the gap I built RelayCart to close.
+
+0:08 — Two jobs. One incident.
+When checkout fails, engineering must restore the service. Support still needs to know which customers can actually buy again.
+
+0:17 — Deployment passed. Checkout failed.
+This release deploys successfully, but checkout fails. RelayCart catches that business failure and opens one incident.
+
+0:26 — A person authorizes rollback.
+I made rollback a human decision. Approval is tied to the exact release change, so a stale approval cannot overwrite a newer version.
+
+0:37 — Approve once. Recover safely.
+The operator approves once. The system rolls back, then checks whether checkout actually works.
+
+0:44 — Prove checkout works again.
+A green health check isn't enough. RelayCart also creates a checkout and reads the order back before calling the service recovered.
+
+0:54 — 18 customers. A visible handoff.
+Next, eighteen affected customers get linked cases in GoHighLevel. Support can see who needs a response.
+
+1:03 — Same recovery. Different outcomes.
+Acme confirms checkout works. Ocean still needs help. Customer outcomes stay separate, so recovery cannot close an unresolved case.
+
+1:13 — Turn replies into support tasks.
+Ocean's reply creates one support task. Unanswered cases stay open. Silence never counts as success.
+
+1:21 — Built across system boundaries.
+Workflows coordinate recovery. Postgres preserves state. AI advice is validated before it reaches the workflow.
+
+1:31 — Recovery verified. Customer work visible.
+I designed for human authorization, verified checkout, and durable customer follow up. The recorded run shows all three.
+
+1:41 — Kabir Sokhi
+I'm Kabir. I build reliable automation around customer outcomes. Explore the project on GitHub.
