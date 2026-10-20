@@ -21,9 +21,9 @@ RelayCart connects incident response to customer operations: safely restore chec
 
 [![RelayCart demo preview: checkout failure, exact human approval, native GHL workflows and customer recovery](docs/evidence/portfolio/demo/demo-preview.gif)](https://github.com/kabbersokhi-boop/saas-incident-response-customer-operations/raw/refs/heads/main/docs/evidence/portfolio/demo/RelayCart-End-to-End-Demo.mp4)
 
-**[Watch / download the narrated demo — 3:25, 1080p MP4](https://github.com/kabbersokhi-boop/saas-incident-response-customer-operations/raw/refs/heads/main/docs/evidence/portfolio/demo/RelayCart-End-to-End-Demo.mp4)** · Male voiceover, English subtitles, animated chapter labels, and embedded chapters. The complete journey from checkout failure to verified recovery and customer follow-up.
+**[Watch the end-to-end demo — 3:25](https://github.com/kabbersokhi-boop/saas-incident-response-customer-operations/raw/refs/heads/main/docs/evidence/portfolio/demo/RelayCart-End-to-End-Demo.mp4)** · Follow a checkout failure through human-approved recovery, customer confirmation, and support follow-up.
 
-[English subtitles (.srt)](docs/evidence/portfolio/demo/RelayCart-End-to-End-Demo.en.srt) · [Full narration transcript](docs/evidence/portfolio/demo/RelayCart-End-to-End-Demo-transcript.txt)
+[Subtitles](docs/evidence/portfolio/demo/RelayCart-End-to-End-Demo.en.srt) · [Transcript](docs/evidence/portfolio/demo/RelayCart-End-to-End-Demo-transcript.txt)
 
 | Time | What happens | What it demonstrates |
 | --- | --- | --- |
