@@ -1,0 +1,241 @@
+{
+  "voice": "am_michael",
+  "speed": 1.0,
+  "source_sha256": "99ec636c121a993e5da3b2a3fe23c5643243874641774066f745b4623e5c1b2c",
+  "scenes": [
+    {
+      "at": 0,
+      "title": "RelayCart incident response",
+      "duration": 6,
+      "lines": [
+        "RelayCart connects safe incident response with customer recovery."
+      ],
+      "phase": "OVERVIEW"
+    },
+    {
+      "at": 6,
+      "title": "Healthy service and a verified checkout canary",
+      "duration": 12,
+      "lines": [
+        "Start with a healthy service and a working checkout.",
+        "The canary creates an order, establishing the business baseline."
+      ],
+      "phase": "01 / DETECT"
+    },
+    {
+      "at": 18,
+      "title": "Deployment completes \u2014 but checkout fails",
+      "duration": 11,
+      "lines": [
+        "Now deploy the broken release.",
+        "Deployment completes, but checkout fails. That is the incident trigger."
+      ],
+      "phase": "01 / DETECT"
+    },
+    {
+      "at": 29,
+      "title": "n8n correlates deployment, health and checkout signals",
+      "duration": 8.5,
+      "lines": [
+        "n eight n correlates deployment, health, and checkout signals.",
+        "Duplicate signals do not create separate incidents."
+      ],
+      "phase": "01 / DETECT"
+    },
+    {
+      "at": 37.5,
+      "title": "One correlated SEV-2 incident; AI remains advisory",
+      "duration": 8.5,
+      "lines": [
+        "One severity two incident captures the failure.",
+        "The model response is invalid, so its advice is rejected."
+      ],
+      "phase": "01 / DETECT"
+    },
+    {
+      "at": 46,
+      "title": "Bounded NIM investigation; schema validation stays enforced",
+      "duration": 8.5,
+      "lines": [
+        "The investigation gathers evidence and calls NVIDIA NIM.",
+        "Invalid advice is rejected. Human approval stays enforced."
+      ],
+      "phase": "02 / INVESTIGATE"
+    },
+    {
+      "at": 54.5,
+      "title": "Human approval binds the exact release change",
+      "duration": 8.5,
+      "lines": [
+        "The operator reviews the exact rollback, from version one point eight point two to one point eight point one."
+      ],
+      "phase": "03 / APPROVE"
+    },
+    {
+      "at": 63,
+      "title": "Approve once; rollback and recovery checks execute",
+      "duration": 10,
+      "lines": [
+        "Approval is single use, expires, and is bound to this release change.",
+        "The operator approves, then rollback and recovery checks execute."
+      ],
+      "phase": "03 / APPROVE"
+    },
+    {
+      "at": 73,
+      "title": "Exact approval consumed; source release checked again",
+      "duration": 8.5,
+      "lines": [
+        "The remediation workflow consumes approval and checks the source release again.",
+        "A newer release would block a stale rollback."
+      ],
+      "phase": "03 / APPROVE"
+    },
+    {
+      "at": 81.5,
+      "title": "Verify release, health, checkout and order read-back",
+      "duration": 8.5,
+      "lines": [
+        "Recovery checks the release, service health, checkout creation, and order read back."
+      ],
+      "phase": "04 / VERIFY"
+    },
+    {
+      "at": 90,
+      "title": "Technical recovery requires all four business checks",
+      "duration": 8.5,
+      "lines": [
+        "All four checks pass before the incident becomes recovered.",
+        "A green health check alone would not prove checkout works."
+      ],
+      "phase": "04 / VERIFY"
+    },
+    {
+      "at": 98.5,
+      "title": "Durable customer fanout synchronizes live GHL cases",
+      "duration": 8.5,
+      "lines": [
+        "The customer impact workflow synchronizes live GoHighLevel cases.",
+        "Durable retries keep the handoff recoverable."
+      ],
+      "phase": "05 / SYNC CASES"
+    },
+    {
+      "at": 107,
+      "title": "18 live Service Cases for checkout subscribers",
+      "duration": 7.5,
+      "lines": [
+        "Eighteen checkout subscribers have Service Cases for this incident.",
+        "Historical cases are preserved."
+      ],
+      "phase": "05 / SYNC CASES"
+    },
+    {
+      "at": 114.5,
+      "title": "Native GHL Service Case Intake workflow",
+      "duration": 7.5,
+      "lines": [
+        "This published GoHighLevel workflow adds an intake note when a Service Case is created."
+      ],
+      "phase": "06 / GHL HANDOFF"
+    },
+    {
+      "at": 122,
+      "title": "Native GHL Technical Recovery workflow",
+      "duration": 7.5,
+      "lines": [
+        "The technical recovery workflow updates the case and enrolls associated records in confirmation."
+      ],
+      "phase": "06 / GHL HANDOFF"
+    },
+    {
+      "at": 129.5,
+      "title": "Native GHL Conversation AI: working, broken or no reply",
+      "duration": 9,
+      "lines": [
+        "Conversation AI asks whether checkout works again.",
+        "Explicit branches handle working, still broken, and no response."
+      ],
+      "phase": "06 / GHL HANDOFF"
+    },
+    {
+      "at": 138.5,
+      "title": "Recovery confirmation question and explicit outcome branches",
+      "duration": 8.5,
+      "lines": [
+        "Here is the actual recovery question and LiveChat configuration.",
+        "Silence cannot count as confirmed resolution."
+      ],
+      "phase": "06 / GHL HANDOFF"
+    },
+    {
+      "at": 147,
+      "title": "Synthetic customer feedback",
+      "duration": 6,
+      "lines": [
+        "Synthetic replies use the LiveChat test API to exercise real workflows."
+      ],
+      "phase": "07 / CONFIRM"
+    },
+    {
+      "at": 153,
+      "title": "Fresh replies drive outcomes; negative reply creates one task",
+      "duration": 8.5,
+      "lines": [
+        "n eight n validates fresh replies and persists customer outcomes.",
+        "Negative feedback checks for an existing task before creating one."
+      ],
+      "phase": "07 / CONFIRM"
+    },
+    {
+      "at": 161.5,
+      "title": "Acme case: recovered and confirmed resolved",
+      "duration": 7.5,
+      "lines": [
+        "Acme Bikes confirms checkout works.",
+        "Its case is technically recovered and customer confirmed resolved."
+      ],
+      "phase": "08 / FOLLOW UP"
+    },
+    {
+      "at": 169,
+      "title": "Ocean case: recovered but needs customer follow-up",
+      "duration": 9.533333,
+      "lines": [
+        "Ocean Apparel still needs help.",
+        "Technical status stays recovered while customer status becomes needs follow up."
+      ],
+      "phase": "08 / FOLLOW UP"
+    },
+    {
+      "at": 178.533333,
+      "title": "Still broken: one incident-scoped follow-up task",
+      "duration": 9.4,
+      "lines": [
+        "One support task captures the unresolved customer issue.",
+        "This count is scoped to the recorded incident; older tasks remain."
+      ],
+      "phase": "08 / FOLLOW UP"
+    },
+    {
+      "at": 187.933333,
+      "title": "Technical recovery is not customer confirmation",
+      "duration": 10.233333,
+      "lines": [
+        "The final dashboard separates technical recovery from customer resolution.",
+        "One customer is resolved, one needs follow up, and sixteen await confirmation."
+      ],
+      "phase": "09 / OUTCOMES"
+    },
+    {
+      "at": 198.166666,
+      "title": "Verified incident and customer outcomes",
+      "duration": 7,
+      "lines": [
+        "Verified recovery. Eighteen customer cases.",
+        "A clear handoff for the customer who still needs help."
+      ],
+      "phase": "09 / OUTCOMES"
+    }
+  ]
+}

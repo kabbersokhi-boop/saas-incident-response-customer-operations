@@ -1,0 +1,62 @@
+{
+  "sha256": "11aaf7ee8dace8d1067e628b37fc315507a9c87e84b387c1835978fc4e8d1856",
+  "duration": "205.166667",
+  "chapters": 24,
+  "resolution": "1920x1080",
+  "codecs": [
+    "h264",
+    "aac",
+    "mov_text"
+  ],
+  "decode_errors": 0,
+  "asr_matched_word_fraction": 0.931758530183727,
+  "decoded_audio_peak": 0.8481746912002563,
+  "chapter_audio_peaks": [
+    0.8408523201942444,
+    0.8423874378204346,
+    0.8417130708694458,
+    0.8409912586212158,
+    0.8423222303390503,
+    0.8418755531311035,
+    0.8400033116340637,
+    0.8423575162887573,
+    0.8409501314163208,
+    0.8427315950393677,
+    0.8425966501235962,
+    0.8422684669494629,
+    0.8411929607391357,
+    0.8425843715667725,
+    0.8415513038635254,
+    0.841921865940094,
+    0.8419029116630554,
+    0.841401219367981,
+    0.845060408115387,
+    0.841498613357544,
+    0.8432779312133789,
+    0.8481746912002563,
+    0.8420088291168213,
+    0.8415928483009338
+  ],
+  "minimum_encoded_audio_correlation": 0.9999934251562991,
+  "visual_review_frames": 72,
+  "review_note": "Contact sheets require visual inspection; ASR is an automated intelligibility check, not human listening.",
+  "visual_review": "Inspected all 24 chapter starts, middles and ends, plus full-size layout and browser screenshots.",
+  "browser_playback": {
+    "initial": {
+      "time": 1.649293,
+      "frames": 54,
+      "audioBytes": 43644,
+      "width": 1920,
+      "height": 1080,
+      "error": null
+    },
+    "seek_screenshots": [
+      58,
+      101,
+      134,
+      193
+    ],
+    "end_playback": true
+  },
+  "speech_check": "Reviewed automatic transcription against narration script; no human listening claim."
+}

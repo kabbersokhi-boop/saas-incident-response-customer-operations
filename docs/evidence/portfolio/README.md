@@ -8,7 +8,7 @@ No image is an AI-generated or reconstructed UI. The Mermaid diagrams in the roo
 
 | Asset | What it shows |
 | --- | --- |
-| [Complete MP4](demo/RelayCart-End-to-End-Demo.mp4) · [Preview GIF](demo/demo-preview.gif) · [Poster](demo/demo-poster.png) | One edited 3:25 story, including all six n8n paths and all three published native GHL workflows |
+| [Complete MP4](demo/RelayCart-End-to-End-Demo.mp4) · [Preview GIF](demo/demo-preview.gif) · [Poster](demo/demo-poster.png) | One narrated, English-captioned 3:25 story with animated chapter labels, including all six n8n paths and all three published native GHL workflows |
 | [Healthy checkout](demo/01-healthy-checkout.png) · [Failed deployment](demo/02-failed-deployment.png) | Healthy order creation followed by deployment completion with business failure |
 | [Investigation execution](demo/03-investigation-success.png) · [Exact approval](demo/04-human-approval.png) | Actual schema rejection, deterministic policy and human authorization boundary |
 | [Four recovery checks](demo/05-verified-recovery.png) | Final release, health, checkout creation and order read-back all pass |
@@ -20,6 +20,8 @@ No image is an AI-generated or reconstructed UI. The Mermaid diagrams in the roo
 | [Final dashboard](demo/16-customer-outcomes.png) · [Scoped verification](demo/verification.json) | 18 affected, 1 confirmed, 1 follow-up, 16 awaiting; unaffected control; older records preserved |
 
 **Source:** authenticated browser-page capture at 1600×900, edited into a 1920×1080 MP4 at 30 fps. PNGs are full-output video frames; the editorial headings and scope captions are part of the video, not native application UI. The GIF is a short selection of reviewed chapters, not the full demo. No workflow or field was modified to improve its screenshot.
+
+**Media update (2026-10-20):** male synthetic narration, synchronized English captions (burned in and selectable), animated chapter labels, and a progress line were added to the original recording. [Subtitles](demo/RelayCart-End-to-End-Demo.en.srt) · [Transcript](demo/RelayCart-End-to-End-Demo-transcript.txt) · [Production and review](../../demo-production/README.md). The underlying run and original stills retain their October 3 provenance.
 
 **Scope:** SaaS releases and orders are local synthetic operations; n8n executions and GHL API records are real. Fresh synthetic replies use the native LiveChat API test transport. The actual NIM response was rejected for an invalid schema, with no approval bypass. The successful investigation execution proves orchestration completion, not validated AI output.
 

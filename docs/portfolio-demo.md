@@ -1,6 +1,6 @@
 # RelayCart — recorded demo walkthrough
 
-[Watch the complete 3:25 demo](https://github.com/kabbersokhi-boop/saas-incident-response-customer-operations/raw/refs/heads/main/docs/evidence/portfolio/demo/RelayCart-End-to-End-Demo.mp4) · [Back to the project](../README.md) · [Evidence provenance](evidence/portfolio/README.md)
+[Watch the narrated 3:25 demo](https://github.com/kabbersokhi-boop/saas-incident-response-customer-operations/raw/refs/heads/main/docs/evidence/portfolio/demo/RelayCart-End-to-End-Demo.mp4) · [Back to the project](../README.md) · [Evidence provenance](evidence/portfolio/README.md)
 
 One continuous story: a broken checkout becomes a correlated incident, an operator approves the exact rollback, business checks verify recovery, and live GoHighLevel records distinguish customer confirmation from technical success.
 
@@ -65,4 +65,6 @@ Each execution below was checked for successful status and association with the 
 
 [Scoped outcome verification](evidence/portfolio/demo/verification.json) records the four passing checks, consumed approval, 18 cases, 16/1/1 outcomes, correct Contact associations and one new task. This is recorded-run evidence, not a production guarantee. Retry, replay, stale-approval and provider-failure tests are documented separately in [Phase 4 verification](phase-4-verification.md).
 
-The MP4 is H.264, 1920×1080 at 30 fps, with embedded chapters for navigation.
+The MP4 is H.264, 1920×1080 at 30 fps, with a male synthetic voiceover, AAC audio, burned-in English captions, an additional selectable English subtitle track, animated chapter labels, and embedded chapters for navigation. [Download the SRT](evidence/portfolio/demo/RelayCart-End-to-End-Demo.en.srt) or [read the transcript](evidence/portfolio/demo/RelayCart-End-to-End-Demo-transcript.txt).
+
+The October 20, 2026 media edit adds narration and editorial overlays to the original October 3 recording. The recorded incident, workflow executions, outcomes, and chapter times are preserved. [Production details](demo-production/README.md).

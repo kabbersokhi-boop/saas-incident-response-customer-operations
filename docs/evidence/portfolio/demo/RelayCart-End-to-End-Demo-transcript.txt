@@ -1,0 +1,75 @@
+RelayCart — narrated end-to-end demo
+Male synthetic voice: Kokoro am_michael. English.
+Original footage recorded October 3, 2026; narrated edit October 20, 2026.
+
+0:00 — RelayCart incident response
+RelayCart connects safe incident response with customer recovery.
+
+0:06 — Healthy service and a verified checkout canary
+Start with a healthy service and a working checkout. The canary creates an order, establishing the business baseline.
+
+0:18 — Deployment completes — but checkout fails
+Now deploy the broken release. Deployment completes, but checkout fails. That is the incident trigger.
+
+0:29 — n8n correlates deployment, health and checkout signals
+n8n correlates deployment, health, and checkout signals. Duplicate signals do not create separate incidents.
+
+0:37 — One correlated SEV-2 incident; AI remains advisory
+One severity two incident captures the failure. The model response is invalid, so its advice is rejected.
+
+0:46 — Bounded NIM investigation; schema validation stays enforced
+The investigation gathers evidence and calls NVIDIA NIM. Invalid advice is rejected. Human approval stays enforced.
+
+0:54 — Human approval binds the exact release change
+The operator reviews the exact rollback, from version one point eight point two to one point eight point one.
+
+1:03 — Approve once; rollback and recovery checks execute
+Approval is single use, expires, and is bound to this release change. The operator approves, then rollback and recovery checks execute.
+
+1:13 — Exact approval consumed; source release checked again
+The remediation workflow consumes approval and checks the source release again. A newer release would block a stale rollback.
+
+1:21 — Verify release, health, checkout and order read-back
+Recovery checks the release, service health, checkout creation, and order read back.
+
+1:30 — Technical recovery requires all four business checks
+All four checks pass before the incident becomes recovered. A green health check alone would not prove checkout works.
+
+1:38 — Durable customer fanout synchronizes live GHL cases
+The customer impact workflow synchronizes live GoHighLevel cases. Durable retries keep the handoff recoverable.
+
+1:47 — 18 live Service Cases for checkout subscribers
+Eighteen checkout subscribers have Service Cases for this incident. Historical cases are preserved.
+
+1:54 — Native GHL Service Case Intake workflow
+This published GoHighLevel workflow adds an intake note when a Service Case is created.
+
+2:02 — Native GHL Technical Recovery workflow
+The technical recovery workflow updates the case and enrolls associated records in confirmation.
+
+2:09 — Native GHL Conversation AI: working, broken or no reply
+Conversation AI asks whether checkout works again. Explicit branches handle working, still broken, and no response.
+
+2:18 — Recovery confirmation question and explicit outcome branches
+Here is the actual recovery question and LiveChat configuration. Silence cannot count as confirmed resolution.
+
+2:27 — Synthetic customer feedback
+Synthetic replies use the LiveChat test API to exercise real workflows.
+
+2:33 — Fresh replies drive outcomes; negative reply creates one task
+n8n validates fresh replies and persists customer outcomes. Negative feedback checks for an existing task before creating one.
+
+2:41 — Acme case: recovered and confirmed resolved
+Acme Bikes confirms checkout works. Its case is technically recovered and customer confirmed resolved.
+
+2:49 — Ocean case: recovered but needs customer follow-up
+Ocean Apparel still needs help. Technical status stays recovered while customer status becomes needs follow up.
+
+2:58 — Still broken: one incident-scoped follow-up task
+One support task captures the unresolved customer issue. This count is scoped to the recorded incident; older tasks remain.
+
+3:07 — Technical recovery is not customer confirmation
+The final dashboard separates technical recovery from customer resolution. One customer is resolved, one needs follow up, and sixteen await confirmation.
+
+3:18 — Verified incident and customer outcomes
+Verified recovery. Eighteen customer cases. A clear handoff for the customer who still needs help.
